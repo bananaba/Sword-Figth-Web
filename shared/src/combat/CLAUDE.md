@@ -6,7 +6,7 @@
 
 - `types.ts` — `Vec2`, `FighterState`, `GuardSnapshot`, `AttackEvent`, `Outcome`, `WeaponStats`
 - `geometry.ts` — 선분/박스 교차, 두 선의 예각. 순수 수학.
-- `weapons.ts` — `BASIC_SWORD` 디폴트 + 확장 포인트
+- `weapons.ts` — `PLASMA_BLADE` 디폴트 + 확장 포인트 (IP-안전 네이밍 — `claudedocs/research_character_weapon_customization_20260429.md` §7.3)
 - `resolver.ts` — `resolveAttack` / `applyOutcome` / `tickFighter`
 - `index.ts` — 배럴 익스포트 (`@vibejam/shared`)
 
@@ -34,7 +34,7 @@
   - `block` → `attackerStun > 0`이면 공격자 stun, `defenderCounterWindow > 0`이면 디펜더 카운터
   - 넉백: `attackerFollowFraction = 1.0` → 거리 보존 (양쪽 같은 속도로 이동)
 
-## 주요 튜닝 노브 (현재 BASIC_SWORD)
+## 주요 튜닝 노브 (현재 PLASMA_BLADE)
 
 - 넉백: slice 8 / counter 10 / **thrust 14** (slice < counter < thrust 위계)
 - 타이밍: `stunMs = 1500` (단일 변수 — 공격자 stun = 카운터 윈도우 = thrust block stun)
@@ -43,7 +43,7 @@
 ## 변경 시
 
 - 새 룰 추가 → resolver의 결정 트리 + types.ts의 Outcome → `useDuelLoop` 통합 + `Fighter.tsx` 시각화
-- 새 weapon stat → `WeaponStats` + `BASIC_SWORD` 디폴트 + `DuelDebug` 슬라이더 + `tuningFromWeapon`/`tuningToWeaponPatch`
+- 새 weapon stat → `WeaponStats` + `PLASMA_BLADE` 디폴트 + `DuelDebug` 슬라이더 + `tuningFromWeapon`/`tuningToWeaponPatch`
 - 빌드: `yarn workspace @vibejam/shared build` 후 client typecheck
 - 테스트는 아직 없음 (백로그) — 회귀 시 직접 `?demo=arena`로 검증
 

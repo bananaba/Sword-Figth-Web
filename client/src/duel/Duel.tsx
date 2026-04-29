@@ -2,7 +2,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import * as THREE from "three";
-import { BASIC_SWORD, type Vec2 } from "@vibejam/shared";
+import { PLASMA_BLADE, type Vec2 } from "@vibejam/shared";
 import { ARENA_RADIUS, Arena3D } from "./Arena3D";
 import { Fighter, SHOULDER_Y } from "./Fighter";
 import { ImpactRings } from "./ImpactRings";
@@ -10,6 +10,11 @@ import { useDuelLoop, type UseDuelLoop } from "./useDuelLoop";
 import { useMouseInput } from "./useMouseInput";
 import { DEFAULT_AI, initialAiState, tickAi, type AiState } from "./ai";
 import { DuelHud } from "./DuelHud";
+import {
+  TitleScreen,
+  readStoredIdentity,
+  type Identity,
+} from "./TitleScreen";
 import {
   DuelDebugPanel,
   DuelDebugScene,
@@ -22,7 +27,20 @@ const PLAYER_Z = -1.6;
 const OPPONENT_Z = +1.6;
 const SHAKE_LIFE_MS = 220;
 
-function GameStage({ duel, debug }: { duel: UseDuelLoop; debug: boolean }) {
+// Opponent (AI) accent color. Magenta — high hue contrast vs. all five
+// player presets, and avoids Sith-coded red
+// (`research_character_weapon_customization_20260429.md` §3.3, §7.4).
+const OPPONENT_ACCENT = "#e879f9";
+
+function GameStage({
+  duel,
+  debug,
+  playerAccent,
+}: {
+  duel: UseDuelLoop;
+  debug: boolean;
+  playerAccent: string;
+}) {
   const { camera } = useThree();
   const lastTime = useRef(performance.now());
   const aiRef = useRef<AiState>(initialAiState(performance.now()));
@@ -102,8 +120,8 @@ function GameStage({ duel, debug }: { duel: UseDuelLoop; debug: boolean }) {
 
   return (
     <>
-      <Fighter state={duel.playerVisual} />
-      <Fighter state={duel.opponentVisual} />
+      <Fighter state={duel.playerVisual} accentColor={playerAccent} />
+      <Fighter state={duel.opponentVisual} accentColor={OPPONENT_ACCENT} />
       <ImpactRings eventsRef={duel.impactEvents} />
       {debug && <DuelDebugScene player={duel.playerVisual} opponent={duel.opponentVisual} />}
     </>
@@ -111,6 +129,14 @@ function GameStage({ duel, debug }: { duel: UseDuelLoop; debug: boolean }) {
 }
 
 export function Duel() {
+  const [identity, setIdentity] = useState<Identity | null>(() =>
+    readStoredIdentity(),
+  );
+  if (!identity) return <TitleScreen onStart={setIdentity} />;
+  return <DuelGame identity={identity} />;
+}
+
+function DuelGame({ identity }: { identity: Identity }) {
   const duel = useDuelLoop({
     initialPlayerZ: PLAYER_Z,
     initialOpponentZ: OPPONENT_Z,
@@ -124,7 +150,7 @@ export function Duel() {
   }, []);
 
   const [debug, setDebug] = useState(false);
-  const [tuning, setTuning] = useState<DuelTuning>(() => tuningFromWeapon(BASIC_SWORD));
+  const [tuning, setTuning] = useState<DuelTuning>(() => tuningFromWeapon(PLASMA_BLADE));
 
   useEffect(() => {
     duel.updateWeapon(tuningToWeaponPatch(tuning));
@@ -141,7 +167,7 @@ export function Duel() {
   }, []);
 
   const resetTuning = useCallback(() => {
-    setTuning(tuningFromWeapon(BASIC_SWORD));
+    setTuning(tuningFromWeapon(PLASMA_BLADE));
   }, []);
 
   const cameraInit = useMemo(
@@ -165,7 +191,7 @@ export function Duel() {
         gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       >
         <Arena3D />
-        <GameStage duel={duel} debug={debug} />
+        <GameStage duel={duel} debug={debug} playerAccent={identity.saberColor} />
         <EffectComposer multisampling={0}>
           <Bloom
             mipmapBlur
@@ -177,7 +203,15 @@ export function Duel() {
         </EffectComposer>
       </Canvas>
 
-      <DuelHud hud={duel.hud} tickKey={hudKey} onResetMatch={duel.resetMatch} />
+      <DuelHud
+        hud={duel.hud}
+        tickKey={hudKey}
+        onResetMatch={duel.resetMatch}
+        playerName={identity.name}
+        playerAccent={identity.saberColor}
+        opponentName="AI Bot"
+        opponentAccent={OPPONENT_ACCENT}
+      />
       {debug && (
         <DuelDebugPanel tuning={tuning} onChange={setTuning} onReset={resetTuning} />
       )}

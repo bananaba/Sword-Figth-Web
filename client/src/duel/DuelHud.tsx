@@ -5,17 +5,48 @@ interface DuelHudProps {
   /** Reactivity hook — pass a value that changes ~10 Hz so this re-renders. */
   tickKey: number;
   onResetMatch: () => void;
+  /** Player display name (from `localStorage["chambara.name"]` via TitleScreen). */
+  playerName: string;
+  /** Player side identity color (their plasma blade hex). */
+  playerAccent: string;
+  /** Opponent display name (jam: "AI Bot"; Phase 11: from server payload). */
+  opponentName: string;
+  /** Opponent side identity color. Static `#e879f9` magenta for now. */
+  opponentAccent: string;
 }
 
-export function DuelHud({ hud, tickKey, onResetMatch }: DuelHudProps) {
+export function DuelHud({
+  hud,
+  tickKey,
+  onResetMatch,
+  playerName,
+  playerAccent,
+  opponentName,
+  opponentAccent,
+}: DuelHudProps) {
   void tickKey;
   const s = hud.current;
   const match = s.match;
 
   return (
     <>
-      <TopBar match={match} phaseRemainingMs={s.phaseTimeRemainingMs} />
-      <PhaseOverlay match={match} phaseRemainingMs={s.phaseTimeRemainingMs} onResetMatch={onResetMatch} />
+      <TopBar
+        match={match}
+        phaseRemainingMs={s.phaseTimeRemainingMs}
+        playerName={playerName}
+        playerAccent={playerAccent}
+        opponentName={opponentName}
+        opponentAccent={opponentAccent}
+      />
+      <PhaseOverlay
+        match={match}
+        phaseRemainingMs={s.phaseTimeRemainingMs}
+        onResetMatch={onResetMatch}
+        playerName={playerName}
+        playerAccent={playerAccent}
+        opponentName={opponentName}
+        opponentAccent={opponentAccent}
+      />
       <PlayerStatus state={s} />
       <OutcomeFlash outcome={s.lastOutcome} />
       <ControlsHint />
@@ -26,9 +57,17 @@ export function DuelHud({ hud, tickKey, onResetMatch }: DuelHudProps) {
 function TopBar({
   match,
   phaseRemainingMs,
+  playerName,
+  playerAccent,
+  opponentName,
+  opponentAccent,
 }: {
   match: MatchState;
   phaseRemainingMs: number;
+  playerName: string;
+  playerAccent: string;
+  opponentName: string;
+  opponentAccent: string;
 }) {
   const seconds = Math.ceil(phaseRemainingMs / 1000);
   const showTimer = match.phase === "fighting";
@@ -40,7 +79,7 @@ function TopBar({
         left: "50%",
         transform: "translateX(-50%)",
         display: "flex",
-        gap: 16,
+        gap: 14,
         alignItems: "center",
         padding: "8px 18px",
         background: "rgba(15,23,42,0.78)",
@@ -50,9 +89,10 @@ function TopBar({
         backdropFilter: "blur(6px)",
       }}
     >
-      <FlagDots count={match.playerWins} color="#3b82f6" />
-      <div style={{ fontWeight: 700, fontSize: 14, opacity: 0.9 }}>
-        Round {match.roundNumber}
+      <NameTag name={playerName} accent={playerAccent} align="right" />
+      <FlagDots count={match.playerWins} color={playerAccent} />
+      <div style={{ fontWeight: 700, fontSize: 13, opacity: 0.7 }}>
+        R{match.roundNumber}
       </div>
       <div
         style={{
@@ -66,7 +106,37 @@ function TopBar({
       >
         {showTimer ? `${seconds}s` : "—"}
       </div>
-      <FlagDots count={match.opponentWins} color="#ef4444" reverse />
+      <FlagDots count={match.opponentWins} color={opponentAccent} reverse />
+      <NameTag name={opponentName} accent={opponentAccent} align="left" />
+    </div>
+  );
+}
+
+function NameTag({
+  name,
+  accent,
+  align,
+}: {
+  name: string;
+  accent: string;
+  align: "left" | "right";
+}) {
+  return (
+    <div
+      style={{
+        fontWeight: 700,
+        fontSize: 14,
+        color: accent,
+        textShadow: `0 0 8px ${accent}`,
+        maxWidth: 140,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        textAlign: align,
+        letterSpacing: 0.5,
+      }}
+    >
+      {name}
     </div>
   );
 }
@@ -104,10 +174,18 @@ function PhaseOverlay({
   match,
   phaseRemainingMs,
   onResetMatch,
+  playerName,
+  playerAccent,
+  opponentName,
+  opponentAccent,
 }: {
   match: MatchState;
   phaseRemainingMs: number;
   onResetMatch: () => void;
+  playerName: string;
+  playerAccent: string;
+  opponentName: string;
+  opponentAccent: string;
 }) {
   if (match.phase === "countdown") {
     const seconds = Math.max(1, Math.ceil(phaseRemainingMs / 1000));
@@ -128,9 +206,25 @@ function PhaseOverlay({
           winner={winner}
           phaseStartedAt={match.phaseStartedAt}
           roundNumber={match.roundNumber}
+          playerName={playerName}
+          playerAccent={playerAccent}
+          opponentName={opponentName}
+          opponentAccent={opponentAccent}
         />
       );
     }
+    const winnerName =
+      winner === "player"
+        ? playerName
+        : winner === "opponent"
+        ? opponentName
+        : null;
+    const winnerAccent =
+      winner === "player"
+        ? playerAccent
+        : winner === "opponent"
+        ? opponentAccent
+        : "#94a3b8";
     return (
       <Overlay>
         <div style={{ fontSize: 24, opacity: 0.8, marginBottom: 8 }}>
@@ -140,24 +234,19 @@ function PhaseOverlay({
           style={{
             fontSize: 56,
             fontWeight: 800,
-            color:
-              winner === "player"
-                ? "#60a5fa"
-                : winner === "opponent"
-                ? "#f87171"
-                : "#94a3b8",
+            color: winnerAccent,
+            textShadow: winnerName ? `0 0 24px ${winnerAccent}` : undefined,
           }}
         >
-          {winner === "player"
-            ? "You win"
-            : winner === "opponent"
-            ? "Opponent wins"
-            : "Draw"}
+          {winnerName ? `${winnerName} wins` : "Draw"}
         </div>
       </Overlay>
     );
   }
   if (match.phase === "matchOver") {
+    const isPlayerWin = match.matchWinner === "player";
+    const winnerName = isPlayerWin ? playerName : opponentName;
+    const winnerAccent = isPlayerWin ? playerAccent : opponentAccent;
     return (
       <Overlay>
         <div style={{ fontSize: 24, opacity: 0.8 }}>Match Over</div>
@@ -165,13 +254,17 @@ function PhaseOverlay({
           style={{
             fontSize: 64,
             fontWeight: 800,
-            color: match.matchWinner === "player" ? "#60a5fa" : "#f87171",
+            color: winnerAccent,
+            textShadow: `0 0 32px ${winnerAccent}`,
             marginTop: 8,
           }}
         >
-          {match.matchWinner === "player" ? "Victory" : "Defeat"}
+          {isPlayerWin ? "Victory" : "Defeat"}
         </div>
-        <div style={{ fontSize: 18, marginTop: 16, opacity: 0.7 }}>
+        <div style={{ fontSize: 20, marginTop: 12, opacity: 0.85, color: winnerAccent }}>
+          {winnerName}
+        </div>
+        <div style={{ fontSize: 18, marginTop: 12, opacity: 0.7 }}>
           {match.playerWins} – {match.opponentWins}
         </div>
         <button
@@ -200,10 +293,18 @@ function KoSplash({
   winner,
   phaseStartedAt,
   roundNumber,
+  playerName,
+  playerAccent,
+  opponentName,
+  opponentAccent,
 }: {
   winner: import("./useDuelLoop").RoundWinner | null;
   phaseStartedAt: number;
   roundNumber: number;
+  playerName: string;
+  playerAccent: string;
+  opponentName: string;
+  opponentAccent: string;
 }) {
   const age = performance.now() - phaseStartedAt;
   // Pop-in (0–180ms): scale 0.5→1.1; settle (180–360ms): scale 1.1→1.0; hold; fade out at end.
@@ -229,13 +330,13 @@ function KoSplash({
   const subline = isDraw
     ? "Both fighters out"
     : winner === "player"
-    ? "You knocked them out"
-    : "You were knocked out";
+    ? `${playerName} knocked out ${opponentName}`
+    : `${opponentName} knocked out ${playerName}`;
   const accent = isDraw
     ? "#f1f5f9"
     : winner === "player"
-    ? "#7dd3fc"
-    : "#fca5a5";
+    ? playerAccent
+    : opponentAccent;
 
   return (
     <Overlay>

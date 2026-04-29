@@ -195,7 +195,7 @@
 
 | Phase | 상태 | 의존 |
 |---|---|---|
-| 9.5 Identity + IP polish | ⬜ | 없음 |
+| 9.5 Identity + IP polish | ✅ 완료 (2026-04-29, `duel-implementation.md` §9 Phase 9.5) | 없음 |
 | 10a 디스패처 인프라 | ⬜ | 없음 |
 | 10b 시간/공간 효과 | ⬜ | 10a |
 | 9 Audio | ⬜ | **SFX 12개 도착** |

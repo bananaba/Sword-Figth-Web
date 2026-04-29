@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Trail } from "@react-three/drei";
 import * as THREE from "three";
@@ -69,6 +69,94 @@ export interface FighterVisualState {
 
 interface FighterProps {
   state: React.MutableRefObject<FighterVisualState>;
+  /**
+   * Side identity color (hex). Drives blade emissive + Trail. Phase 9.5b
+   * makes both sides visually distinct via blade glow only — body stays
+   * neutral (`research_character_weapon_customization_20260429.md` §3.3:
+   * "사이드 ID = 블레이드 + Fresnel rim, 유니폼 색이 아님").
+   */
+  accentColor: string;
+}
+
+/**
+ * Derive a 3-stop palette from a single accent hex by sliding lightness in
+ * HSL space. Lets Phase 9.5d hand a user-picked saber color straight through;
+ * the resolver/UI never have to know the swing/recovery shades.
+ */
+interface BladePalette {
+  core: string;    // idle / windUp glow
+  bright: string;  // swing peak
+  dim: string;     // recovery / cooldown
+  guard: string;   // active guard segment
+}
+
+/**
+ * Inject a Fresnel rim term into a `MeshStandardMaterial` via
+ * `onBeforeCompile`. Adds `uRimColor` to the outgoing light right before
+ * `<output_fragment>` so the rim respects material opacity (idle 32% fade
+ * still feels right) but bypasses PBR lighting — pure additive glow.
+ *
+ * Returns a uniform handle whose `.value` can be mutated when the accent
+ * color changes (Phase 9.5d) without recompiling the shader.
+ *
+ * Power 2.6 + intensity 1.6 reads as a clear silhouette outline at
+ * 3-4 unit camera distance; HDR scaling lets Bloom catch the rim
+ * (`research_character_weapon_customization_20260429.md` §3.4).
+ */
+function applyFresnelRim(
+  material: THREE.MeshStandardMaterial,
+  initialColor: string,
+): { value: THREE.Color } {
+  const uRimColor = { value: new THREE.Color(initialColor) };
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uRimColor = uRimColor;
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        uniform vec3 uRimColor;`,
+      )
+      .replace(
+        "#include <output_fragment>",
+        `{
+          vec3 rimViewDir = normalize(vViewPosition);
+          float rimDot = 1.0 - abs(dot(rimViewDir, normalize(vNormal)));
+          float rim = pow(rimDot, 2.6);
+          outgoingLight += uRimColor * rim * 1.6;
+        }
+        #include <output_fragment>`,
+      );
+  };
+  // Force a re-compile if the material was already used.
+  material.needsUpdate = true;
+  return uRimColor;
+}
+
+function deriveBladePalette(hex: string): BladePalette {
+  const base = new THREE.Color(hex);
+  const hsl = { h: 0, s: 0, l: 0 };
+  base.getHSL(hsl);
+  const bright = new THREE.Color().setHSL(
+    hsl.h,
+    Math.min(1, hsl.s + 0.05),
+    Math.min(0.88, hsl.l + 0.18),
+  );
+  const dim = new THREE.Color().setHSL(
+    hsl.h,
+    hsl.s,
+    Math.max(0.28, hsl.l - 0.08),
+  );
+  const guard = new THREE.Color().setHSL(
+    hsl.h,
+    Math.min(1, hsl.s + 0.08),
+    Math.max(0.42, hsl.l - 0.04),
+  );
+  return {
+    core: "#" + base.getHexString(),
+    bright: "#" + bright.getHexString(),
+    dim: "#" + dim.getHexString(),
+    guard: "#" + guard.getHexString(),
+  };
 }
 
 const GRIP_LOCAL = new THREE.Vector3(0, SHOULDER_Y, 0);
@@ -85,11 +173,13 @@ interface SwordPose {
 const IDLE_OPACITY = 0.32;
 const ACTIVE_OPACITY = 1.0;
 
-export function Fighter({ state }: FighterProps) {
+export function Fighter({ state, accentColor }: FighterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
   const swordRef = useRef<THREE.Group>(null);
   const stunGroupRef = useRef<THREE.Group>(null);
+  const palette = useMemo(() => deriveBladePalette(accentColor), [accentColor]);
+  const trailColor = useMemo(() => new THREE.Color(palette.bright), [palette.bright]);
 
   const bodyMaterial = useMemo(
     () =>
@@ -110,6 +200,20 @@ export function Fighter({ state }: FighterProps) {
       }),
     [],
   );
+  // Wire the rim once; `accentColor` updates flow through the uniform .value
+  // so Phase 9.5d color changes don't trigger a shader recompile.
+  const bodyRimUniform = useMemo(
+    () => applyFresnelRim(bodyMaterial, accentColor),
+    [bodyMaterial],
+  );
+  const headRimUniform = useMemo(
+    () => applyFresnelRim(headMaterial, accentColor),
+    [headMaterial],
+  );
+  useEffect(() => {
+    bodyRimUniform.value.set(accentColor);
+    headRimUniform.value.set(accentColor);
+  }, [accentColor, bodyRimUniform, headRimUniform]);
   const swordMaterial = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -148,7 +252,7 @@ export function Fighter({ state }: FighterProps) {
     }
 
     if (swordRef.current) {
-      const pose = currentSwordPose(s, now);
+      const pose = currentSwordPose(s, now, palette);
       orientSegment(
         swordRef.current,
         bladePlaneToLocal(pose.fromBladePlane, s.facing),
@@ -208,7 +312,7 @@ export function Fighter({ state }: FighterProps) {
         <Trail
           width={0.22}
           length={1.6}
-          color={new THREE.Color("#7dd3fc")}
+          color={trailColor}
           attenuation={(t) => t * t}
           decay={3}
         >
@@ -240,7 +344,11 @@ const GRIP_2D: Vec2 = { x: 0, y: SHOULDER_Y };
  *    * (bladeLength + reach)) extended pose. Blade visibly extends along
  *    the thrust direction — reads as a stab.
  */
-function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
+function currentSwordPose(
+  s: FighterVisualState,
+  now: number,
+  palette: BladePalette,
+): SwordPose {
   const a = s.attack;
   if (a) {
     if (now < a.impactAt) {
@@ -250,8 +358,8 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
       return {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
-        color: "#dbeafe",
-        emissive: "#38bdf8",
+        color: "#ffffff",
+        emissive: palette.core,
         emissiveIntensity: 1.6,
       };
     }
@@ -262,7 +370,7 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
         color: "#ffffff",
-        emissive: "#7dd3fc",
+        emissive: palette.bright,
         emissiveIntensity: 3.4,
       };
     }
@@ -278,8 +386,8 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
       return {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
-        color: "#dbeafe",
-        emissive: "#0ea5e9",
+        color: "#ffffff",
+        emissive: palette.dim,
         emissiveIntensity: 1.2,
       };
     }
@@ -289,8 +397,8 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
     return {
       fromBladePlane: s.guard.grip,
       toBladePlane: s.guard.tip,
-      color: "#dbeafe",
-      emissive: "#3b82f6",
+      color: "#ffffff",
+      emissive: palette.guard,
       emissiveIntensity: 2.2,
     };
   }
@@ -298,8 +406,8 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
   return {
     fromBladePlane: GRIP_2D,
     toBladePlane: s.bladeTipBladePlane,
-    color: "#e0f2fe",
-    emissive: "#38bdf8",
+    color: "#ffffff",
+    emissive: palette.core,
     emissiveIntensity: 1.4,
   };
 }

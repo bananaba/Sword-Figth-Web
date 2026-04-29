@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 import {
-  BASIC_SWORD,
+  PLASMA_BLADE,
   applyOutcome,
   resolveAttack,
   tickFighter,
@@ -224,14 +224,25 @@ export function mouseToAttackEvent(atk: MouseAttack, weapon: WeaponStats): Attac
       timestamp: atk.timestamp,
     };
   }
+  // Thrust origin = chest, NOT mouse position. The visual blade in
+  // `commitPending` extends from chest along `direction`, and the resolver's
+  // hit-test segment must cover the same path. Anchoring at chest keeps the
+  // segment inside the body silhouette (resolver `segmentIntersectsBox` is
+  // trivially true when an endpoint sits inside the box) — matches the AI's
+  // `pickThrust` pattern (segment crosses through the body) instead of the
+  // earlier bug where the segment started at the mouse and extended further
+  // *away* from the body, missing the silhouette.
   const dx = atk.start.x;
   const dy = atk.start.y - SHOULDER_Y;
   const len = Math.hypot(dx, dy);
-  const inv = len > 1e-6 ? 1 / len : 0;
+  // Fallback to forward-up when the click lands on the chest itself —
+  // matches `buildPerpendicularGuard`'s degenerate-pointer handling.
+  const ndx = len > 1e-6 ? dx / len : 0;
+  const ndy = len > 1e-6 ? dy / len : 1;
   return {
     kind: "thrust",
-    origin: atk.start,
-    direction: { x: dx * inv, y: dy * inv },
+    origin: { x: 0, y: SHOULDER_Y },
+    direction: { x: ndx, y: ndy },
     reach: weapon.thrustReach,
     timestamp: atk.timestamp,
   };
@@ -241,7 +252,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const playerStateRef = useRef<FighterState>(freshFighter(opts.initialPlayerZ));
   const opponentStateRef = useRef<FighterState>(freshFighter(opts.initialOpponentZ));
   const matchRef = useRef<MatchState>(initialMatch(performance.now()));
-  const weaponRef = useRef<WeaponStats>({ ...BASIC_SWORD, ...(opts.initialWeapon ?? {}) });
+  const weaponRef = useRef<WeaponStats>({ ...PLASMA_BLADE, ...(opts.initialWeapon ?? {}) });
   const pendingPlayerAttack = useRef<PendingAttack | null>(null);
   const pendingOpponentAttack = useRef<PendingAttack | null>(null);
   const impactEvents = useRef<ImpactEvent[]>([]);
@@ -251,11 +262,14 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     weaponRef.current = { ...weaponRef.current, ...patch };
   }, []);
 
+  // Body color is neutral — sides are distinguished by blade emissive +
+  // (Phase 9.5c) Fresnel rim, not by torso color (research §3.3). Stunned /
+  // cooldown lerps still tint over this base.
   const playerVisual = useRef<FighterVisualState>(
-    initialVisual(opts.initialPlayerZ, +1, "#3b82f6", true),
+    initialVisual(opts.initialPlayerZ, +1, "#64748b", true),
   );
   const opponentVisual = useRef<FighterVisualState>(
-    initialVisual(opts.initialOpponentZ, -1, "#ef4444", false),
+    initialVisual(opts.initialOpponentZ, -1, "#64748b", false),
   );
 
   const hud = useRef<DuelHudState>({

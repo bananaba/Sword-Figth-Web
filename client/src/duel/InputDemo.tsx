@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  BASIC_SWORD,
+  PLASMA_BLADE,
   applyOutcome,
   isInCounterWindow,
   isOnCooldown,
@@ -67,19 +67,19 @@ function dummyGuardSegment(mode: DummyGuardMode): GuardSnapshot {
     case "off":
       return { active: false, grip, tip: grip };
     case "highVertical":
-      return { active: true, grip, tip: { x: DUMMY_X, y: SHOULDER_Y + BASIC_SWORD.bladeLength } };
+      return { active: true, grip, tip: { x: DUMMY_X, y: SHOULDER_Y + PLASMA_BLADE.bladeLength } };
     case "lowVertical":
-      return { active: true, grip, tip: { x: DUMMY_X, y: SHOULDER_Y - BASIC_SWORD.bladeLength } };
+      return { active: true, grip, tip: { x: DUMMY_X, y: SHOULDER_Y - PLASMA_BLADE.bladeLength } };
     case "horizontal":
       return {
         active: true,
-        grip: { x: DUMMY_X - BASIC_SWORD.bladeLength / 2, y: SHOULDER_Y },
-        tip: { x: DUMMY_X + BASIC_SWORD.bladeLength / 2, y: SHOULDER_Y },
+        grip: { x: DUMMY_X - PLASMA_BLADE.bladeLength / 2, y: SHOULDER_Y },
+        tip: { x: DUMMY_X + PLASMA_BLADE.bladeLength / 2, y: SHOULDER_Y },
       };
   }
 }
 
-function mouseAttackToEvent(attack: MouseAttack, weapon: typeof BASIC_SWORD, playerGrip: Vec2): AttackEvent {
+function mouseAttackToEvent(attack: MouseAttack, weapon: typeof PLASMA_BLADE, playerGrip: Vec2): AttackEvent {
   if (attack.kind === "slice") {
     const dx = attack.end.x - attack.start.x;
     const dy = attack.end.y - attack.start.y;
@@ -93,15 +93,19 @@ function mouseAttackToEvent(attack: MouseAttack, weapon: typeof BASIC_SWORD, pla
       timestamp: attack.timestamp,
     };
   }
-  // thrust: extend from current tip in orientation direction
+  // Thrust origin = grip (inside body silhouette), direction = grip→click.
+  // See `useDuelLoop.mouseToAttackEvent` for the rationale — the resolver's
+  // hit segment must pass through the body box, so anchoring at grip keeps
+  // an endpoint inside the box; the click only sets aim direction.
   const dx = attack.start.x - playerGrip.x;
   const dy = attack.start.y - playerGrip.y;
   const len = Math.hypot(dx, dy);
-  const inv = len > 1e-6 ? 1 / len : 0;
+  const ndx = len > 1e-6 ? dx / len : 0;
+  const ndy = len > 1e-6 ? dy / len : 1;
   return {
     kind: "thrust",
-    origin: attack.start,
-    direction: { x: dx * inv, y: dy * inv },
+    origin: playerGrip,
+    direction: { x: ndx, y: ndy },
     reach: weapon.thrustReach,
     timestamp: attack.timestamp,
   };
@@ -166,13 +170,13 @@ export function DuelInputDemo() {
     (atk: MouseAttack) => {
       const now = performance.now();
       const grip: Vec2 = { x: PLAYER_X, y: SHOULDER_Y };
-      const event = mouseAttackToEvent(atk, BASIC_SWORD, grip);
+      const event = mouseAttackToEvent(atk, PLASMA_BLADE, grip);
       const outcome = resolveAttack(
         playerRef.current,
         dummyRef.current,
         bodyHitbox(DUMMY_X),
         event,
-        BASIC_SWORD,
+        PLASMA_BLADE,
         now,
       );
       const facing = dummyRef.current.posX >= playerRef.current.posX ? +1 : -1;
@@ -182,7 +186,7 @@ export function DuelInputDemo() {
         outcome,
         facing,
         now,
-        BASIC_SWORD,
+        PLASMA_BLADE,
       );
       playerRef.current = next.attacker;
       dummyRef.current = next.defender;
@@ -191,8 +195,8 @@ export function DuelInputDemo() {
         atk.kind === "slice"
           ? atk.end
           : {
-              x: atk.start.x + event.direction.x * BASIC_SWORD.thrustReach,
-              y: atk.start.y + event.direction.y * BASIC_SWORD.thrustReach,
+              x: atk.start.x + event.direction.x * PLASMA_BLADE.thrustReach,
+              y: atk.start.y + event.direction.y * PLASMA_BLADE.thrustReach,
             };
       flashRef.current = {
         outcome,
@@ -208,7 +212,7 @@ export function DuelInputDemo() {
 
   const input = useMouseInput({
     toWorld,
-    minSliceDist: BASIC_SWORD.minSliceReach,
+    minSliceDist: PLASMA_BLADE.minSliceReach,
     onAttack: handleAttack,
   });
 
