@@ -8,13 +8,13 @@ export const SHOULDER_Y = 1.15;
 export const BODY_HEIGHT = 1.7;
 export const BODY_HALF_WIDTH = 0.32;
 export const BODY_DEPTH = 0.42;
-const STUN_STAR_Y = BODY_HEIGHT + 0.55;
-const STUN_STAR_RADIUS = 0.42;
+const STUN_STAR_Y = BODY_HEIGHT + 0.65;
+const STUN_STAR_RADIUS = 0.55;
 
 const starShape = (() => {
   const shape = new THREE.Shape();
-  const outer = 0.12;
-  const inner = 0.05;
+  const outer = 0.2;
+  const inner = 0.085;
   for (let i = 0; i < 10; i += 1) {
     const r = i % 2 === 0 ? outer : inner;
     const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
@@ -287,20 +287,18 @@ export function Fighter({ state, accentColor }: FighterProps) {
       <group ref={stunGroupRef} position={[0, STUN_STAR_Y, 0]} visible={false}>
         <mesh position={[STUN_STAR_RADIUS, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
           <shapeGeometry args={[starShape]} />
-          <meshStandardMaterial
-            color="#facc15"
-            emissive="#fde68a"
-            emissiveIntensity={1.6}
+          <meshBasicMaterial
+            color="#fde047"
             side={THREE.DoubleSide}
+            toneMapped={false}
           />
         </mesh>
         <mesh position={[-STUN_STAR_RADIUS, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
           <shapeGeometry args={[starShape]} />
-          <meshStandardMaterial
-            color="#facc15"
-            emissive="#fde68a"
-            emissiveIntensity={1.6}
+          <meshBasicMaterial
+            color="#fde047"
             side={THREE.DoubleSide}
+            toneMapped={false}
           />
         </mesh>
       </group>
@@ -326,6 +324,25 @@ export function Fighter({ state, accentColor }: FighterProps) {
 }
 
 const GRIP_2D: Vec2 = { x: 0, y: SHOULDER_Y };
+const BLADE_LENGTH = 1.2;
+
+/**
+ * Project an arbitrary tip point onto the GRIP_2D-centred circle of radius
+ * BLADE_LENGTH. Keeps the rendered blade a constant length while letting the
+ * caller drive the *direction* (mouse for idle, amplified arc for slice swing).
+ * Falls back to a forward-up pose when the tip coincides with the grip.
+ */
+function tipAtFixedLength(tip: Vec2): Vec2 {
+  const dx = tip.x - GRIP_2D.x;
+  const dy = tip.y - GRIP_2D.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-5) return { x: GRIP_2D.x, y: GRIP_2D.y + BLADE_LENGTH };
+  const inv = BLADE_LENGTH / len;
+  return {
+    x: GRIP_2D.x + dx * inv,
+    y: GRIP_2D.y + dy * inv,
+  };
+}
 
 /**
  * Resolves which segment to render this frame, prioritising:
@@ -351,10 +368,15 @@ function currentSwordPose(
 ): SwordPose {
   const a = s.attack;
   if (a) {
+    // Slice keeps a fixed-length blade — the amplified arc only drives the
+    // swing direction, not the visual reach. Thrust is exempt because the
+    // blade visibly extends along the thrust path (reads as a stab).
+    const fixLength = a.kind === "slice";
     if (now < a.impactAt) {
       const t = clamp01((now - a.inputAt) / Math.max(1, a.impactAt - a.inputAt));
       const eased = easeInQuad(t);
-      const tip = lerpVec(s.bladeTipBladePlane, a.start, eased);
+      const rawTip = lerpVec(s.bladeTipBladePlane, a.start, eased);
+      const tip = fixLength ? tipAtFixedLength(rawTip) : rawTip;
       return {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
@@ -365,7 +387,8 @@ function currentSwordPose(
     }
     if (now < a.swingEndAt) {
       const t = clamp01((now - a.impactAt) / Math.max(1, a.swingEndAt - a.impactAt));
-      const tip = lerpVec(a.start, a.end, t);
+      const rawTip = lerpVec(a.start, a.end, t);
+      const tip = fixLength ? tipAtFixedLength(rawTip) : rawTip;
       return {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
@@ -382,7 +405,8 @@ function currentSwordPose(
       const restingTip = s.guard.active
         ? s.guard.tip
         : s.bladeTipBladePlane;
-      const tip = lerpVec(a.end, restingTip, eased);
+      const rawTip = lerpVec(a.end, restingTip, eased);
+      const tip = fixLength ? tipAtFixedLength(rawTip) : rawTip;
       return {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
@@ -405,7 +429,7 @@ function currentSwordPose(
 
   return {
     fromBladePlane: GRIP_2D,
-    toBladePlane: s.bladeTipBladePlane,
+    toBladePlane: tipAtFixedLength(s.bladeTipBladePlane),
     color: "#ffffff",
     emissive: palette.core,
     emissiveIntensity: 1.4,
