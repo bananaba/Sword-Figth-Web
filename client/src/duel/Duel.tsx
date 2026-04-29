@@ -139,7 +139,7 @@ function GameStage({
     duel.tick(dt * timeScale, now);
 
     const playerZ = duel.playerVisual.current.worldZ;
-    const targetCamZ = playerZ - 1.6;
+    const targetCamZ = playerZ - 2.6;
     camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, 0.22);
 
     // Eiserloh trauma model: square trauma so shake feels punchy then
@@ -149,8 +149,8 @@ function GameStage({
     const trauma = useShake.getState().trauma;
     const shake = trauma * trauma * SHAKE_AMPLITUDE;
     camera.position.x = (Math.random() - 0.5) * shake;
-    camera.position.y = 2.05 + (Math.random() - 0.5) * shake;
-    camera.lookAt(0, 1.1, camera.position.z + 3.7);
+    camera.position.y = 2.4 + (Math.random() - 0.5) * shake;
+    camera.lookAt(0, 1.1, camera.position.z + 4.5);
 
     // Post FX driven from trauma — BLOCK trauma 0.20 < 0.25 cutoff so
     // BLOCK doesn't pulse CA (matches research §2.1: BLOCK CA = none).
@@ -281,7 +281,7 @@ function DuelGame({
   }, []);
 
   const cameraInit = useMemo(
-    () => ({ position: [0, 2.05, PLAYER_Z - 1.6] as [number, number, number] }),
+    () => ({ position: [0, 2.4, PLAYER_Z - 2.6] as [number, number, number] }),
     [],
   );
 
@@ -382,7 +382,7 @@ function RankedDuelGame({
   }, []);
 
   const cameraInit = useMemo(
-    () => ({ position: [0, 2.05, PLAYER_Z - 1.6] as [number, number, number] }),
+    () => ({ position: [0, 2.4, PLAYER_Z - 2.6] as [number, number, number] }),
     [],
   );
 

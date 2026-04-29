@@ -349,11 +349,25 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
                 : msg.ratings.opponent.after;
             writeStoredRating(ourRating);
           }
+          // Mirror ratings to local frame: `ratings.player` should always be
+          // *us*, regardless of which slot we got assigned. Without this the
+          // overlay shows the winner's rating change to the loser and vice
+          // versa.
+          let localRatings = msg.ratings;
+          if (
+            localRatings &&
+            ourSide.current === "opponent"
+          ) {
+            localRatings = {
+              player: localRatings.opponent,
+              opponent: localRatings.player,
+            };
+          }
           updateSummary({
             status: "match_over",
             matchOver: {
               winner: localWinner,
-              ratings: opts.recordResult === false ? null : msg.ratings,
+              ratings: opts.recordResult === false ? null : localRatings,
             },
           });
           break;

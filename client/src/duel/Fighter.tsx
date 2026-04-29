@@ -460,7 +460,7 @@ function lerpVec(a: Vec2, b: Vec2, t: number): Vec2 {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
-export const SWORD_FORWARD_OFFSET = 1.6;
+export const SWORD_FORWARD_OFFSET = 1.0;
 
 function bladePlaneToLocal(point: Vec2, facing: number): THREE.Vector3 {
   return new THREE.Vector3(facing * point.x, point.y, SWORD_FORWARD_OFFSET);
