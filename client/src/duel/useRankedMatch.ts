@@ -352,10 +352,23 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
           lastServerNow.current = msg.serverNow;
           lastServerNowAt.current = localNow;
           if (ourSide.current === "opponent") {
-            // Server labels are in server's own frame: `player` = side "player".
-            // We mirror so our local "player" ref always points at OUR fighter.
-            targetPlayer.current = msg.opponent;
-            targetOpponent.current = msg.player;
+            // Server labels are in server's own frame: `player` = side
+            // "player" (worldZ -1.6, facing +1) and `opponent` = side
+            // "opponent" (worldZ +1.6, facing -1). We mirror BOTH the slot
+            // assignment AND the world-axis sign so our local frame is always
+            // "player at -1.6, opponent at +1.6, camera behind us looking +Z".
+            // Without the negate the camera would sit on the wrong side and
+            // both fighters would render at server's far end.
+            targetPlayer.current = {
+              ...msg.opponent,
+              posX: -msg.opponent.posX,
+              velX: -msg.opponent.velX,
+            };
+            targetOpponent.current = {
+              ...msg.player,
+              posX: -msg.player.posX,
+              velX: -msg.player.velX,
+            };
           } else {
             targetPlayer.current = msg.player;
             targetOpponent.current = msg.opponent;
@@ -523,7 +536,16 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
         kind: atk.kind,
       };
       localPlayerAttackConfirmed.current = false;
-      clientRef.current?.send({ t: "attack", event, now: Date.now() });
+      // Server's `parseAttack` reads kind/origin/direction/reach from the
+      // top-level message — flatten the AttackEvent so the wire format matches.
+      clientRef.current?.send({
+        t: "attack",
+        kind: event.kind,
+        origin: event.origin,
+        direction: event.direction,
+        reach: event.reach,
+        now: Date.now(),
+      });
     },
     [],
   );

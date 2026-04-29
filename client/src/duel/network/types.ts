@@ -1,4 +1,4 @@
-import type { AttackEvent, GuardSnapshot, Outcome } from "@vibejam/shared";
+import type { AttackKind, GuardSnapshot, Outcome, Vec2 } from "@vibejam/shared";
 
 /**
  * Wire protocol shared with `worker/src/duel-session.ts`. Authoritative
@@ -104,4 +104,11 @@ export type ClientMessage =
     }
   | { t: "ready"; now: number }
   | { t: "guard"; guard: GuardSnapshot }
-  | { t: "attack"; event: AttackEvent; now: number };
+  | {
+      t: "attack";
+      kind: AttackKind;
+      origin: Vec2;
+      direction: Vec2;
+      reach: number;
+      now: number;
+    };
