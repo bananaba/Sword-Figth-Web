@@ -15,19 +15,20 @@
 - **`client/src/duel/`** — **메인 게임 모듈** (R3F 렌더링 + 입력 + 매치 진행). 모듈 가이드: `client/src/duel/CLAUDE.md`
 - **`client/src/demo/`** — 초기 프로토타입 (`?demo=arena`, `?demo=sword`, `?demo=character`)
 - **`client/src/game/`** — 폐기된 비행기 스캐폴드 (R3F+Colyseus 인프라 검증용으로만 유지)
-- **`server/src/`** — Colyseus 멀티플레이 서버 (현재는 폐기된 GameRoom, 잼 후반에 DuelRoom으로 리팩토링 예정)
+- **`server/src/`** — 폐기된 비행기 Colyseus 스캐폴드. 듀얼 멀티는 Cloudflare Workers + Durable Objects로 새로 구현 예정 (`docs/ranked-multiplayer-cloudflare.md`)
 
 ## 작업 시작 시 우선 읽어야 할 문서
 
 1. `docs/duel-implementation.md` — **현재 빌드된 시스템의 단일 진실 소스**. 룰→코드 매핑, 튜닝 노브, Phase 히스토리.
 2. `docs/game-design.md` — 컨셉/메카닉/입력 모델/잼 일정 (§6.1)
-3. `claudedocs/research_chambara_visuals_20260429.md` §7 — Day 1 시각 P0 작업 순서
+3. `docs/ranked-multiplayer-cloudflare.md` — 무료 범위 랭크 1v1 서버/배포 전략
+4. `claudedocs/research_chambara_visuals_20260429.md` §7 — Day 1 시각 P0 작업 순서
 
 ## 현재 상태 (2026-04-29)
 
 - **Phase 8 완료 — Day 1 시각 P0 모두 완료**: Bloom + ACES 톤매핑, 검 라이트세이버 emissive(시안 코어), drei Trail, ImpactRings + 카메라 셰이크, KO splash(ringout 분기), 외곽 림 + 발광 페리미터, `Water.tsx` ShaderMaterial
-- **다음 작업**: Step 7 = Colyseus DuelRoom 리팩토링 (사설방 2/4/8/16인 자동 토너먼트 브래킷)
-- **Day 2 작업**: DuelRoom → 랭크/MMR (1대1 자동 매치메이킹) → Vercel 배포 + 컴플라이언스
+- **서버 전략 결정**: 무료 + 랭크 필수 조건 때문에 Colyseus/Render 우선이 아니라 **Cloudflare Workers + Durable Objects**로 새 랭크 1v1 서버 구현
+- **Day 2 작업**: RankedQueue DO → DuelRoom DO → ELO/leaderboard → 배포 + 컴플라이언스. 사설방/토너먼트는 P1/P2
 
 ## 코드 작성 규칙
 

@@ -154,20 +154,14 @@ line_angle = min(diff_rad, π − diff_rad)            // [0, π/2]
 
 ### 멀티플레이
 - [x] AI 봇 (단독 플레이) — 메인 모드로 구현
-- [ ] **사설방 + 자동 토너먼트 (Day 1 종료 후 ~ Day 2)**: Colyseus DuelRoom — shared resolver 권위 서버.
-  - **방 정원 옵션**: **2 / 4 / 8 / 16인** 중 호스트 선택
-  - 2인 = 단일 매치 (Bo3)
-  - 4인 = 준결승 2 → 결승 1 (총 3매치)
-  - 8인 = 8강 4 → 준결승 2 → 결승 1 (총 7매치)
-  - 16인 = 16강 8 → 8강 4 → 준결승 2 → 결승 1 (총 15매치)
-  - 진행은 **자동 브래킷** — 매치 끝나면 승자가 다음 라운드 자동 진입, 패자는 관전 모드 (또는 종료)
-  - 사설방 코드 생성/입장. 호스트가 "시작" 버튼 누르면 브래킷 자동 시드.
-- [ ] **랭크 / MMR (Day 2)**: 단순 ELO + 점수 ±200 매치메이킹 큐 (사설방과 별도, 1대1 자동 매치)
-- [ ] 임팩트 시점 동기화 (네트워크 지연 보상)
+- [ ] **랭크 1v1 자동 매치메이킹 (Day 2 P0)**: Cloudflare Workers + Durable Objects. `RankedQueue` DO가 점수 ±200 범위에서 매칭, `DuelRoom` DO가 shared resolver로 서버 권위 판정. 승패 후 ELO(K=32) 갱신 + Top 20 leaderboard.
+- [ ] **사설방 코드 생성/입장 (P1)**: 랭크 이후 같은 `DuelRoom` DO를 room code 기반으로 재사용.
+- [ ] **자동 토너먼트 4/8/16인 (P2)**: 랭크 1v1 완성 후 확장. 승자 자동 next round, 패자 관전/종료.
+- [ ] 임팩트 시점 동기화 (네트워크 지연 보상) — 최근 200-300ms guard/state history로 보정.
 
 ### 컴플라이언스 / 마무리
 - [x] vibej.am 위젯 동작 확인 (현재 index.html 에 삽입)
-- [ ] **자체 도메인 호스팅** (잼 규칙) — Vercel (client) + Render/Railway (server). Vercel은 Colyseus serverless 부적합으로 client만.
+- [ ] **자체 도메인 호스팅** (잼 규칙) — Cloudflare Pages 또는 Vercel(client) + Cloudflare Workers/Durable Objects(server). Render/Railway/Colyseus는 fallback.
 - [ ] 모바일 빌드 사이즈 점검 (현재 1.25MB / gzip 353KB)
 - [ ] 모바일 동작 검증 (iOS Safari 자이로/터치)
 - [ ] AI 코드 비율 ≥ 90% 유지
@@ -186,11 +180,11 @@ line_angle = min(diff_rad, π − diff_rad)            // [0, π/2]
 7. Stylized water shader
 
 **Day 2 (멀티 + 배포)**:
-1. 사설방 Colyseus DuelRoom (**2/4/8/16인 자동 토너먼트 브래킷**)
-2. 랭크 / MMR (1대1 자동 매치메이킹)
-3. Vercel + Render 배포 + 컴플라이언스 검증
+1. Cloudflare `RankedQueue` Durable Object — ELO 기반 1대1 자동 매치메이킹
+2. Cloudflare `DuelRoom` Durable Object — shared resolver 기반 서버 권위 공격/방어 판정
+3. ELO 저장 + leaderboard + Cloudflare Pages 또는 Vercel 배포 + 컴플라이언스 검증
 
-**P2 폴리시 (시간 남으면)**: MeshToonMaterial, 카메라 임팩트 셰이크/줌, 다리 메시 + walk 애니메이션, HUD 폰트, 사운드.
+**P2 폴리시 (시간 남으면)**: 사설방/토너먼트, MeshToonMaterial, 카메라 임팩트 셰이크/줌, 다리 메시 + walk 애니메이션, HUD 폰트, 사운드.
 
 ## 7. 화이트스페이스 결합 가능성
 

@@ -268,13 +268,15 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 - [ ] **무기 종류** — 차지 검 / 쌍검 / Timely Block (현재 BASIC_SWORD 1종)
 
 ### 멀티플레이 / 랭크 (Day 2)
-- [ ] **사설방 + 자동 토너먼트 (Colyseus DuelRoom)** — `server/src/rooms/GameRoom`을 `DuelRoom`으로 리팩토링. shared resolver 재사용. 사설방 코드 생성/입장. **방 정원 2/4/8/16인 옵션 → 자동 single-elimination 브래킷** (2인=1매치, 4인=3매치, 8인=7매치, 16인=15매치). 매치 종료 시 승자만 다음 라운드 자동 진입.
-- [ ] **권위 서버 모델** — 클라는 입력만 송신, 서버가 resolveAttack, 결과 브로드캐스트
-- [ ] **랭크 / MMR** — 단순 ELO (K=32) + 점수 ±200 큐. SQLite 또는 in-memory. 사설방과 별도의 1대1 자동 매치메이킹.
-- [ ] **임팩트 시점 동기화** — 네트워크 지연 보상
+- [ ] **Cloudflare RankedQueue Durable Object** — 랭크 1v1 자동 매치메이킹. `playerId`/rating/name을 받아 ELO ±200 범위에서 매칭, 30초 이상 대기 시 범위 확장.
+- [ ] **Cloudflare DuelRoom Durable Object** — 방 하나 = DO 하나. `shared/src/combat/resolveAttack` + `applyOutcome`을 서버 권위로 호출하고 outcome/state를 WebSocket broadcast. 기존 `server/src/rooms/GameRoom.ts`는 비행기 스캐폴드라 참고만 한다.
+- [ ] **ELO / leaderboard** — 초기 1000, K=32. rating 원본은 Durable Object SQLite, Top 20 cache는 Workers KV 또는 DO SQLite query. 인증은 잼 이후, 이번에는 `localStorage["chambara.playerId"]` 기반.
+- [ ] **권위 서버 모델** — 클라는 입력/가드 snapshot만 송신, 서버가 cooldown/stun/motion gate와 impact 판정을 처리한다. 클라 예측은 visual-only.
+- [ ] **임팩트 시점 동기화** — 1차는 latest guard 판정, 여유 시 최근 200-300ms state history로 rollback 보정.
+- [ ] **사설방/토너먼트** — P1/P2. 랭크 1v1 완성 후 room code와 4/8/16인 bracket으로 확장.
 
 ### 배포 / 컴플라이언스
-- [ ] **Vercel 배포** (client static + 서버는 Render/Railway — Colyseus는 serverless 부적합)
+- [ ] **무료 배포** — Cloudflare Pages 또는 Vercel(client) + Cloudflare Workers/Durable Objects(server). Render/Railway/Colyseus는 fallback.
 - [ ] **모바일 동작 검증** (iOS Safari 자이로/터치)
 - [ ] **AI 코드 비율 ≥ 90%** 점검
 - [ ] **즉시 로딩** — 빌드 사이즈 / 첫 페인트 측정
@@ -314,8 +316,12 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 ## 10. 참조
 
 - [`docs/game-design.md`](./game-design.md) — 컨셉 / 메카닉 / 입력 모델 디자인 로그
-- [`docs/architecture.md`](./architecture.md) — 인프라 (R3F / Colyseus)
+- [`docs/architecture.md`](./architecture.md) — 인프라 (R3F / Colyseus 레거시)
+- [`docs/ranked-multiplayer-cloudflare.md`](./ranked-multiplayer-cloudflare.md) — 랭크 1v1 Cloudflare 서버/배포 전략
 - [`docs/setup.md`](./setup.md) — 개발 환경
 - [`claudedocs/research_chambara_20260428.md`](../claudedocs/research_chambara_20260428.md) — Switch Sports Chambara 메카닉 리서치 보고서
 - [`claudedocs/research_chambara_visuals_20260429.md`](../claudedocs/research_chambara_visuals_20260429.md) — 시각 처리 리서치 (R3F + Bloom + 라이트세이버 톤)
+- [`claudedocs/research_impact_feedback_20260429.md`](../claudedocs/research_impact_feedback_20260429.md) — 타격감 5축 리서치 (시각·청각·햅틱·시간·공간) — Phase 9/10 폴리시 근거
+- [`claudedocs/research_character_weapon_customization_20260429.md`](../claudedocs/research_character_weapon_customization_20260429.md) — 캐릭터·무기·커스터마이징 + IP-안전 네이밍 — Phase 9.5/12 근거
+- [`docs/jam-polish-plan.md`](./jam-polish-plan.md) — Phase 8 이후 폴리시 작업 큐 + 사용자 에셋 수집 가이드
 - `docs/references/chambara-ref-{1,2,3}.{webp,jpg}` — Switch Sports 챔버라 스크린샷 (카메라 앵글, 검 글로우, 스턴 별 인디케이터 레퍼런스)

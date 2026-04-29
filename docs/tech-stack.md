@@ -12,23 +12,35 @@
 | 3D 렌더 | **Three.js 0.170 + React Three Fiber 8** | Three 가 Vibe Jam 권장. R3F 로 React 컴포넌트 모델 적용. |
 | 3D 헬퍼 | **@react-three/drei** | Sky / Stats 등 즉시 사용 가능한 컴포넌트. |
 | 클라 상태 | **Zustand 5** | Redux 대비 가볍고 R3F 와 잘 어울림. |
-| 멀티플레이 | **Colyseus 0.16** | 룸 / 상태 동기화 / 모니터 내장. PeerJS NAT 함정 회피. |
-| 서버 런타임 | **Node 20 (commonjs)** | Colyseus 데코레이터 + commonjs 안정 조합. |
+| 멀티플레이 | **Cloudflare Workers + Durable Objects (계획)** | 무료 범위에서 WebSocket + stateful room + 랭크 저장을 한 플랫폼에서 처리. |
+| 레거시 서버 | **Colyseus 0.16** | 초기 R3F/네트워크 검증용. 현재 듀얼 랭크 서버의 주 경로는 아님. |
+| 서버 런타임 | **Cloudflare Workers / Node 20 레거시** | 랭크는 Worker/DO, 기존 Colyseus 스캐폴드는 Node 20 commonjs. |
 | 서버 dev | **tsx watch** | TS 직접 실행, 빠른 재시작. |
 | HTTP | **Express 4** | Colyseus 기본 통합. 헬스체크 / 모니터 라우트 호스팅. |
 | CORS | **cors** | 클라/서버 도메인 분리 시 필수. |
 
 ## 결정 근거 상세
 
-### 왜 Colyseus 인가?
+### 왜 Cloudflare Durable Objects 인가?
+
+- **목표**: 무료 범위에서 game jam 제출 가능한 랭크 1v1 멀티플레이.
+- **구조 적합성**: 이 게임은 방 하나가 2명, 작은 상태, 짧은 라운드로 끝난다. `DuelRoom` Durable Object 하나가 한 방을 소유하면 서버 권위 판정과 WebSocket broadcast를 단순하게 구현할 수 있다.
+- **랭크 저장**: Durable Object SQLite / Workers KV로 ELO와 leaderboard를 같은 플랫폼에서 처리 가능.
+- **운영 리스크**: Render Free의 idle sleep/cold start보다 제출용 첫 접속 UX가 안정적이다.
+- **기존 코드 재사용**: `shared/src/combat/resolveAttack` / `applyOutcome`은 Worker에서도 서버 권위 판정으로 재사용한다.
+
+자세한 설계는 `docs/ranked-multiplayer-cloudflare.md`.
+
+### 왜 Colyseus 는 레거시인가?
 
 - **목표**: "최소한의 정보 저장소" 로 시작하지만 "온라인 게임으로 전환 가능" 해야 함.
 - **대안 비교**:
   - *순수 ws + 직접 구현*: 가장 가볍지만 룸·매치메이킹·델타 직렬화를 직접 만들어야 함. 잼 일정에는 불리.
   - *Socket.IO*: 대중적이지만 게임 상태 동기화 추상화는 직접 만들어야 함.
   - *PeerJS / WebRTC*: Pieter 본인이 NAT 문제로 폐기한 사례. 학습 비용 대비 리턴 낮음.
-  - *Colyseus*: `Schema` 기반 자동 델타 압축, `MapSchema` 로 플레이어 컬렉션 즉시 동기화, 모니터 대시보드, Hetzner / Render / Railway 어디든 배포. **이번 잼에 가장 일치**.
+  - *Colyseus*: `Schema` 기반 자동 델타 압축, `MapSchema` 로 플레이어 컬렉션 즉시 동기화, 모니터 대시보드, Hetzner / Render / Railway 어디든 배포.
 - **위험**: Colyseus 의존성으로 서버 번들이 커짐 → 클라이언트 번들에는 영향 없음 (`colyseus.js` 만 사용, 매우 가벼움).
+- **현재 판단**: 이미 듀얼용 서버 구현이 없는 상태라면 Colyseus를 고집할 이유가 작다. 랭크까지 포함한 무료 제출 목표에서는 Cloudflare Durable Objects가 우선이다.
 
 ### 왜 React Three Fiber 인가?
 
@@ -62,7 +74,7 @@
 | `@react-three/rapier` | 물리 / 충돌 | 충돌 판정이 필요한 슈팅으로 확장 시 |
 | `meshline` / `postprocessing` | 비주얼 강화 | 화려한 이펙트가 필요한 경우 |
 | `howler` 또는 native `AudioContext` | 사운드 | 효과음 도입 시 |
-| `better-sqlite3` 또는 `@supabase/supabase-js` | 영구 저장 (점수판) | 점수 / 통계 영구화 필요 시 |
+| Cloudflare Workers KV / Durable Object SQLite | 랭크 저장 / leaderboard | 랭크 멀티 구현 시 |
 | `vitest` + `@testing-library/react` | 테스트 | 로직 회귀 방지 필요 시 |
 | `eslint` + `@typescript-eslint/*` | 린트 | 팀 합류 / CI 도입 시 |
 

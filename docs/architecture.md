@@ -18,11 +18,11 @@ pieter/
 │   ├── public/               # 정적 에셋 (favicon 등)
 │   ├── index.html            # vibejam 위젯 삽입
 │   └── vite.config.ts
-├── server/                   # @vibejam/server
+├── server/                   # @vibejam/server (레거시 Colyseus 스캐폴드)
 │   ├── src/
 │   │   ├── index.ts          # listen()
 │   │   ├── app.config.ts     # Colyseus 앱 설정 + Express
-│   │   ├── rooms/GameRoom.ts # 멀티플레이 룸
+│   │   ├── rooms/GameRoom.ts # 폐기된 비행기 멀티플레이 룸
 │   │   └── schemas/          # @colyseus/schema 정의 (네트워크 상태)
 │   └── tsconfig.json
 ├── shared/                   # @vibejam/shared (양쪽 공통 타입/프로토콜)
@@ -33,6 +33,33 @@ pieter/
 ```
 
 ## 데이터 / 상태 흐름
+
+### 현재 메인 듀얼 (`/`)
+
+현재 메인 게임은 `client/src/duel/`에서 로컬 vs AI로 동작한다. 전투 판정은 `shared/src/combat/`의 순수 함수가 담당하며, 서버 권위 멀티 전환 시에도 이 resolver를 재사용한다.
+
+### 계획: 랭크 1v1 Cloudflare 구조
+
+```
+        [브라우저]                             [Cloudflare]
+   ┌────────────────────┐   WebSocket    ┌──────────────────────┐
+   │ React + R3F Duel   │ <────────────> │ DuelRoom Durable Obj │
+   │  ├─ mouse input    │   input/guard  │  ├─ pending attacks  │
+   │  ├─ visual predict │   state/impact │  ├─ resolveAttack    │
+   │  └─ HUD/rating     │                │  └─ applyOutcome     │
+   └────────────────────┘                └──────────────────────┘
+              │                                      │
+              │ /matchmake                           │ ELO update
+              ▼                                      ▼
+       ┌──────────────┐                    ┌────────────────────┐
+       │ RankedQueue  │                    │ DO SQLite / KV     │
+       │ Durable Obj  │                    │ rating/leaderboard │
+       └──────────────┘                    └────────────────────┘
+```
+
+자세한 결정은 `docs/ranked-multiplayer-cloudflare.md`가 기준이다.
+
+### 레거시: Colyseus 비행기 스캐폴드
 
 ```
         [브라우저]                                  [Node 서버]
@@ -49,12 +76,14 @@ pieter/
 
 ### 클라이언트
 - **렌더 루프**: R3F `useFrame` (브라우저 vsync, 보통 60Hz).
-- **로컬 자기 비행기**: 클라이언트 권위. 키보드 입력 → 위치 갱신을 즉시 반영.
+- **메인 듀얼**: 마우스 입력 → `useDuelLoop` → 로컬 vs AI. 멀티 전환 후에도 클라는 visual prediction과 입력 송신을 담당.
+- **레거시 비행기 스캐폴드**: 클라이언트 권위. 키보드 입력 → 위치 갱신을 즉시 반영.
 - **원격 플레이어**: 서버 상태 → Zustand 스토어 → `RemotePlayers` 컴포넌트 렌더. 추후 보간(interpolation) 추가 예정.
 - **네트워크**: `useNetwork()` 훅이 `Client.joinOrCreate("world")` 후 룸 핸들을 스토어에 저장. `LocalPlayer` 가 매 프레임 마다 `Input` 메시지 송신 (3프레임당 1회 = ~20Hz).
 
 ### 서버
-- **Colyseus**: 룸 / 매치메이킹 / 상태 동기화 / 모니터링이 내장된 multiplayer-game 프레임워크.
+- **Cloudflare Workers + Durable Objects (계획)**: 랭크 1v1의 주 서버 경로. `RankedQueue` DO가 매칭, `DuelRoom` DO가 서버 권위 판정과 WebSocket broadcast를 담당.
+- **Colyseus (레거시)**: 룸 / 매치메이킹 / 상태 동기화 / 모니터링이 내장된 multiplayer-game 프레임워크. 현재 `GameRoom`은 비행기 스캐폴드 검증용이다.
 - **GameRoom (이름 `world`)**:
   - `onJoin`: 플레이어 스폰 (반경 200 원형 분포).
   - `onMessage("input")`: 클라이언트 입력으로 속도 누산.
@@ -83,8 +112,8 @@ shared(빌드 선행) → client / server
 | 요구 | 대응 |
 | --- | --- |
 | 싱글플레이 부터 시작 | `useNetwork` 가 실패해도 게임은 동작 (현재 구현). 서버 끄고 동작. |
-| 온라인 PvP 로 전환 | Colyseus 룸 추가 / `GameRoom` 확장. 매치메이킹은 `joinOrCreate` 그대로 사용. |
-| 영구 점수판 | `server` 에 SQLite (better-sqlite3) 또는 Supabase 한 줄 추가. 룸의 `onLeave` 에서 점수 저장. |
-| 안티치트 | 입력 검증을 GameRoom 에 추가, 클라이언트 권위 → 서버 권위 모델로 전환. |
+| 온라인 랭크 PvP 로 전환 | Cloudflare `RankedQueue` DO + `DuelRoom` DO 추가. 클라는 입력만 송신. |
+| 영구 점수판 | Durable Object SQLite에 rating 원본 저장, Workers KV로 leaderboard cache. |
+| 안티치트 | `DuelRoom` DO에서 cooldown/stun/motion gate와 `resolveAttack`을 서버 권위로 처리. |
 | 모바일 컨트롤 | `useInput` 에 터치 가상 스틱 추가, 키보드와 동일 인터페이스 유지. |
 | 광고 슬롯 | World 에 3D 빌보드 mesh 추가, 텍스처는 동적 `CanvasTexture`. |

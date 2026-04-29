@@ -87,16 +87,18 @@ yarn start         # server/dist/index.js 기동, 기본 포트 2567
 ```
 
 실제 배포 시:
-- **클라이언트**: Cloudflare Pages / Vercel / Netlify 정적 호스팅 (잼 규칙: 자체 도메인 필수).
-- **서버**: Hetzner / Railway / Fly.io 어디든. WebSocket 지원만 확인.
-- 클라 빌드 시 `VITE_SERVER_URL` 을 운영 도메인으로 지정.
+- **클라이언트**: Cloudflare Pages 또는 Vercel 정적 호스팅 (잼 규칙: 자체 도메인 필수).
+- **랭크/멀티 서버**: Cloudflare Workers + Durable Objects. 자세한 설계는 `docs/ranked-multiplayer-cloudflare.md`.
+- **Colyseus 서버**: 현재는 폐기된 비행기 스캐폴드 검증용. Render/Railway 배포는 fallback.
+- 클라 빌드 시 Worker/WebSocket 운영 URL을 환경변수로 지정.
 
 ## 7. 디렉토리에 추가 파일이 필요할 때
 
 - 새 R3F 컴포넌트 → `client/src/game/`
 - DOM 오버레이 → `client/src/components/`
 - 클라/서버 양쪽이 보는 타입 → `shared/src/`
-- 새 룸 (예: 로비, 1v1 매치) → `server/src/rooms/`
+- 새 Colyseus 룸 (레거시/검증용) → `server/src/rooms/`
+- 새 랭크 룸 / 매치 큐 → Cloudflare Worker/Durable Object 쪽 신규 패키지 또는 디렉터리
 - 새 도메인 모델 → `shared/src/types.ts` 에 우선 정의
 
 ## 8. 트러블슈팅
@@ -115,5 +117,5 @@ yarn start         # server/dist/index.js 기동, 기본 포트 2567
 2. **에셋 결정** — Blender 셀프 / Tripo3D / Kenney 무료 에셋.
 3. **사운드** — 효과음 / BGM 라이선스 확보.
 4. **모바일 입력** — 터치 가상 스틱.
-5. **점수판** — 영구 저장 도입 시 SQLite 또는 Supabase.
-6. **배포** — Cloudflare Pages (클라) + Railway (서버) 조합 검토.
+5. **랭크 점수판** — Durable Object SQLite + KV leaderboard cache.
+6. **배포** — Cloudflare Pages 또는 Vercel(client) + Cloudflare Workers/Durable Objects(server).

@@ -9,6 +9,8 @@
 | **현재 빌드의 시스템 구조 이해** | `duel-implementation.md` (단일 진실 소스) |
 | 컨셉 / 메카닉 / 입력 모델 디자인 의도 | `game-design.md` |
 | 잼 일정 / Day 1 / Day 2 / P2 폴리시 우선순위 | `game-design.md` §6.1 |
+| **랭크 멀티 서버 / 무료 배포 전략** | **`ranked-multiplayer-cloudflare.md`** |
+| **Phase 8 이후 폴리시 작업 큐 + 사용자 에셋 수집 가이드** | **`jam-polish-plan.md`** |
 | 데모 라우트(`?demo=arena` 등) 동작 | `prototypes.md` |
 | 빌드/배포/dev 환경 | `setup.md`, `architecture.md` |
 | 기술 스택 결정 근거 | `tech-stack.md` |
@@ -29,6 +31,7 @@
 - **`game-design.md`는 미결정 항목 결정 시 갱신** — §6 미결정 표의 [ ] → [x] 와 결정 사유.
 - 새 데모 라우트 추가 시 → `prototypes.md`에 추가.
 - 새 외부 의존성 추가 시 → `tech-stack.md` "추가될 가능성" 표에서 → 본문으로 이동.
+- 멀티/랭크 서버 전략 변경 시 → `ranked-multiplayer-cloudflare.md` + `game-design.md` §6.1 + `duel-implementation.md` §8 갱신.
 
 ## 파일 명명
 

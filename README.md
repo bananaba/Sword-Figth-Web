@@ -7,7 +7,7 @@
 **플랫폼 / 입력**: PC 1차 타겟. 게임플레이는 **마우스 전용** — 키보드 없이도 풀 플레이 가능 (좌클릭 슬라이스, 휠클릭/더블 클릭 찌르기, 우클릭 가드). 모바일(터치/자이로) 호환은 잼 마감 전 시간 남으면 추가하는 P2 폴리시.
 
 - **클라이언트**: Vite + React + TypeScript + Three.js (React Three Fiber)
-- **서버**: Colyseus + TypeScript (Day 2에 사설방 + 랭크용 DuelRoom 추가 예정)
+- **서버**: 현재 Colyseus 스캐폴드는 레거시. 랭크 1v1 멀티는 Cloudflare Workers + Durable Objects로 새 구현 예정
 - **공유**: `shared/` 워크스페이스에 클라/서버 공통 타입
 - **빌드**: Yarn Workspaces (모노레포)
 
@@ -48,6 +48,7 @@ PC 개발은 `yarn dev:client` (HTTP). HTTPS는 `?demo=sword` 자이로 모드 �
 
 ### 기술
 - [`docs/duel-implementation.md`](./docs/duel-implementation.md) — **현재 빌드된 듀얼 시스템 레퍼런스** (파일 구조, 룰→코드 매핑, 튜닝 노브, 미해결 항목)
+- [`docs/ranked-multiplayer-cloudflare.md`](./docs/ranked-multiplayer-cloudflare.md) — 무료 범위 랭크 1v1 멀티 서버/배포 전략
 - [`docs/architecture.md`](./docs/architecture.md) — 시스템 아키텍처
 - [`docs/tech-stack.md`](./docs/tech-stack.md) — 기술 선택과 근거
 - [`docs/setup.md`](./docs/setup.md) — 개발 환경 셋업
