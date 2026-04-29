@@ -68,18 +68,35 @@ NODE_ENV=development
 VITE_SERVER_URL=ws://localhost:2567
 ```
 
-## 5. 타입체크 / 빌드
+## 5. Worker 랭크 서버
+
+```bash
+yarn test:worker                         # worker build + node:test
+yarn workspace @vibejam/worker build     # Cloudflare Worker dist 생성
+```
+
+현재 `worker/`는 Cloudflare Workers + Durable Objects 랭크 서버의 시작점이다.
+
+- `worker/src/index.ts` — `/healthz`, `/leaderboard`, `/matchmake`, `/rooms/:roomId` 라우팅
+- `worker/src/ranked-queue.ts` — `RankedQueue` Durable Object, ELO 범위 기반 매칭
+- `worker/src/duel-room.ts` — `DuelRoom` Durable Object WebSocket 룸 골격
+- `worker/wrangler.toml` — Cloudflare 배포 바인딩 설정
+
+Wrangler 실행은 Cloudflare 계정/로그인 설정 후 진행한다. 현재 repo에는 런타임 골격과 로컬 단위 테스트를 먼저 둔다.
+
+## 6. 타입체크 / 빌드
 
 ```bash
 yarn typecheck     # 모든 워크스페이스 tsc --noEmit
-yarn build         # shared → client → server 순서 빌드
+yarn build         # shared → client → server → worker 순서 빌드
 ```
 
 빌드 산출물:
 - `client/dist/` — 정적 파일 (index.html + assets) → CDN 배포 대상
 - `server/dist/` — Node 실행 가능 JS → `yarn start` 또는 PM2 / systemd / Docker
+- `worker/dist/` — Cloudflare Worker 배포 대상
 
-## 6. 프로덕션 실행
+## 7. 프로덕션 실행
 
 ```bash
 yarn build
@@ -92,7 +109,7 @@ yarn start         # server/dist/index.js 기동, 기본 포트 2567
 - **Colyseus 서버**: 현재는 폐기된 비행기 스캐폴드 검증용. Render/Railway 배포는 fallback.
 - 클라 빌드 시 Worker/WebSocket 운영 URL을 환경변수로 지정.
 
-## 7. 디렉토리에 추가 파일이 필요할 때
+## 8. 디렉토리에 추가 파일이 필요할 때
 
 - 새 R3F 컴포넌트 → `client/src/game/`
 - DOM 오버레이 → `client/src/components/`
@@ -101,7 +118,7 @@ yarn start         # server/dist/index.js 기동, 기본 포트 2567
 - 새 랭크 룸 / 매치 큐 → Cloudflare Worker/Durable Object 쪽 신규 패키지 또는 디렉터리
 - 새 도메인 모델 → `shared/src/types.ts` 에 우선 정의
 
-## 8. 트러블슈팅
+## 9. 트러블슈팅
 
 | 증상 | 원인 / 해결 |
 | --- | --- |
@@ -111,7 +128,7 @@ yarn start         # server/dist/index.js 기동, 기본 포트 2567
 | Vite 가 `vibej.am/2026/widget.js` 못 찾음 | 정상. 위젯은 외부 도메인 fetch 라 dev 콘솔에 CORS 경고 가능. 배포 후엔 정상. |
 | Colyseus 모니터 화면이 비어있음 | 룸이 생성되어야 보임. 클라이언트에서 한 번 접속 후 새로고침. |
 
-## 9. 다음 단계
+## 10. 다음 단계
 
 1. **게임플레이 디자인 회의** — 비행기 슈팅인지, 다른 장르인지 결정.
 2. **에셋 결정** — Blender 셀프 / Tripo3D / Kenney 무료 에셋.

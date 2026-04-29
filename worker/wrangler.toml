@@ -1,0 +1,13 @@
+name = "chambara-ranked-worker"
+main = "dist/index.js"
+compatibility_date = "2026-04-29"
+
+[durable_objects]
+bindings = [
+  { name = "RANKED_QUEUE", class_name = "RankedQueue" },
+  { name = "DUEL_ROOM", class_name = "DuelRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RankedQueue", "DuelRoom"]
