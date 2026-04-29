@@ -120,6 +120,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
           color: "#7dd3fc",
           textShadow: "0 0 28px #38bdf8, 0 0 64px #38bdf8",
           fontFamily: "ui-monospace, monospace",
+          animation: "titlePulse 3.6s ease-in-out infinite",
         }}
       >
         CHAMBARA DUEL
@@ -133,7 +134,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
           textTransform: "uppercase",
         }}
       >
-        plasma blade · 1v1
+        plasma blade · 1v1 · mouse-only
       </div>
 
       <div
@@ -329,14 +330,85 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
 
       <div
         style={{
-          marginTop: 18,
-          fontSize: 11,
-          color: "#64748b",
+          marginTop: 22,
+          padding: "12px 18px",
+          background: "rgba(2,6,23,0.5)",
+          border: "1px solid rgba(125, 211, 252, 0.15)",
+          borderRadius: 10,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          fontSize: 12,
           letterSpacing: 1,
         }}
       >
-        L-drag → slice · dbl/middle-click → thrust · R hold → guard
+        <div style={{ color: "#94a3b8", letterSpacing: 3, fontSize: 10 }}>
+          HOW TO PLAY
+        </div>
+        <ControlRow icon="L" hint="drag" action="slice" accent="#7dd3fc" />
+        <ControlRow icon="dbl" hint="click" action="thrust" accent="#fda4af" />
+        <ControlRow icon="R" hint="hold" action="guard" accent="#bfdbfe" />
+        <div
+          style={{
+            color: "#64748b",
+            fontSize: 10,
+            marginTop: 4,
+            letterSpacing: 0.5,
+          }}
+        >
+          first to 2 rounds wins · ringout = K.O.
+        </div>
       </div>
+
+      <style>{`
+        @keyframes titlePulse {
+          0%, 100% { text-shadow: 0 0 28px #38bdf8, 0 0 64px #38bdf8; }
+          50% { text-shadow: 0 0 36px #38bdf8, 0 0 96px #38bdf8; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function ControlRow({
+  icon,
+  hint,
+  action,
+  accent,
+}: {
+  icon: string;
+  hint: string;
+  action: string;
+  accent: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        fontSize: 13,
+      }}
+    >
+      <span
+        style={{
+          minWidth: 32,
+          display: "inline-block",
+          padding: "2px 6px",
+          background: "rgba(2,6,23,0.7)",
+          border: `1px solid ${accent}`,
+          borderRadius: 4,
+          color: accent,
+          fontFamily: "ui-monospace, monospace",
+          fontWeight: 700,
+          fontSize: 11,
+          textAlign: "center",
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ color: "#94a3b8", fontSize: 12 }}>{hint}</span>
+      <span style={{ color: "#cbd5e1", fontWeight: 600 }}>→ {action}</span>
     </div>
   );
 }

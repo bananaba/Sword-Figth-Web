@@ -325,42 +325,85 @@ function PhaseOverlay({
     const isPlayerWin = match.matchWinner === "player";
     const winnerName = isPlayerWin ? playerName : opponentName;
     const winnerAccent = isPlayerWin ? playerAccent : opponentAccent;
+    const titleColor = isPlayerWin ? "#fbbf24" : "#f87171";
+    const titleGlow = isPlayerWin ? "#f59e0b" : "#dc2626";
     return (
       <Overlay>
-        <div style={{ fontSize: 24, opacity: 0.8 }}>Match Over</div>
         <div
           style={{
-            fontSize: 64,
-            fontWeight: 800,
-            color: winnerAccent,
-            textShadow: `0 0 32px ${winnerAccent}`,
-            marginTop: 8,
+            fontSize: 18,
+            opacity: 0.8,
+            letterSpacing: 4,
+            textTransform: "uppercase",
           }}
         >
-          {isPlayerWin ? "Victory" : "Defeat"}
+          Match Over
         </div>
-        <div style={{ fontSize: 20, marginTop: 12, opacity: 0.85, color: winnerAccent }}>
+        <div
+          style={{
+            fontSize: 84,
+            fontWeight: 900,
+            color: titleColor,
+            textShadow: `0 0 28px ${titleGlow}, 0 0 56px ${titleGlow}`,
+            letterSpacing: 12,
+            fontFamily: "ui-monospace, monospace",
+            marginTop: 8,
+            animation: "matchOverPopIn 360ms ease-out both",
+          }}
+        >
+          {isPlayerWin ? "VICTORY" : "DEFEAT"}
+        </div>
+        <div
+          style={{
+            fontSize: 22,
+            marginTop: 14,
+            opacity: 0.95,
+            color: winnerAccent,
+            textShadow: `0 0 12px ${winnerAccent}`,
+            letterSpacing: 1,
+          }}
+        >
           {winnerName}
         </div>
-        <div style={{ fontSize: 18, marginTop: 12, opacity: 0.7 }}>
-          {match.playerWins} – {match.opponentWins}
+        <div
+          style={{
+            fontSize: 32,
+            marginTop: 16,
+            fontFamily: "ui-monospace, monospace",
+            fontVariantNumeric: "tabular-nums",
+            color: "#cbd5e1",
+            letterSpacing: 4,
+          }}
+        >
+          <span style={{ color: playerAccent }}>{match.playerWins}</span>
+          <span style={{ opacity: 0.5, margin: "0 12px" }}>–</span>
+          <span style={{ color: opponentAccent }}>{match.opponentWins}</span>
         </div>
         <button
           onClick={onResetMatch}
           style={{
-            marginTop: 24,
-            padding: "10px 20px",
-            fontSize: 16,
-            fontWeight: 700,
-            background: "#1d4ed8",
-            color: "white",
-            border: "none",
+            marginTop: 28,
+            padding: "12px 28px",
+            fontSize: 14,
+            fontWeight: 800,
+            letterSpacing: 2,
+            color: "#e2e8f0",
+            background: "rgba(2,6,23,0.6)",
+            border: "1px solid #475569",
             borderRadius: 8,
             cursor: "pointer",
+            textTransform: "uppercase",
           }}
         >
-          New match
+          New Match
         </button>
+        <style>{`
+          @keyframes matchOverPopIn {
+            0% { transform: scale(0.6); opacity: 0; }
+            70% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+        `}</style>
       </Overlay>
     );
   }
