@@ -109,9 +109,14 @@ function toError(err: unknown): Error {
  * Build the room WS URL from the worker base. The worker's `/rooms/:id`
  * path accepts the `Upgrade: websocket` handshake.
  */
-export function roomWsUrl(workerHttpUrl: string, roomId: string): string {
+export function roomWsUrl(
+  workerHttpUrl: string,
+  roomId: string,
+  params: Record<string, string> = {},
+): string {
   const wsBase = workerHttpUrl
     .replace(/^http:/, "ws:")
     .replace(/^https:/, "wss:");
-  return `${wsBase}/rooms/${encodeURIComponent(roomId)}`;
+  const query = new URLSearchParams(params).toString();
+  return `${wsBase}/rooms/${encodeURIComponent(roomId)}${query ? `?${query}` : ""}`;
 }

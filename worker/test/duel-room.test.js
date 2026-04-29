@@ -46,6 +46,53 @@ test("DuelRoom accepts WebSocket upgrades and connects them to the session", asy
     );
 
     assert.deepEqual(serverSocket.sent[0], { t: "hello", side: "player", rating: 1000 });
+    assert.equal(serverSocket.sent.at(-1).roomId, "ranked-p1-p2");
+  } finally {
+    globalThis.WebSocketPair = originalPair;
+  }
+});
+
+test("DuelRoom disables leaderboard recording for private rooms", async () => {
+  const originalPair = globalThis.WebSocketPair;
+  globalThis.WebSocketPair = class FakeWebSocketPair {
+    constructor() {
+      this[0] = new FakeWebSocket();
+      this[1] = new FakeWebSocket();
+    }
+  };
+
+  try {
+    const room = new DuelRoom({}, {});
+    await room.fetch(
+      new Request("https://worker.test/rooms/private-ABC123?record=0", {
+        headers: { upgrade: "websocket" },
+      }),
+    );
+
+    assert.equal(room.recordResults, false);
+  } finally {
+    globalThis.WebSocketPair = originalPair;
+  }
+});
+
+test("DuelRoom records leaderboard results by default", async () => {
+  const originalPair = globalThis.WebSocketPair;
+  globalThis.WebSocketPair = class FakeWebSocketPair {
+    constructor() {
+      this[0] = new FakeWebSocket();
+      this[1] = new FakeWebSocket();
+    }
+  };
+
+  try {
+    const room = new DuelRoom({}, {});
+    await room.fetch(
+      new Request("https://worker.test/rooms/ranked-p1-p2", {
+        headers: { upgrade: "websocket" },
+      }),
+    );
+
+    assert.equal(room.recordResults, true);
   } finally {
     globalThis.WebSocketPair = originalPair;
   }

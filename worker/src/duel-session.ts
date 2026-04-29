@@ -63,9 +63,14 @@ export class DuelRoomSession {
   private match = initialMatch();
 
   constructor(
-    private readonly roomId: string,
+    private roomId: string,
     private readonly options: DuelRoomSessionOptions = {},
   ) {}
+
+  setRoomId(roomId: string): void {
+    if (this.sockets.some((entry) => entry.player)) return;
+    this.roomId = roomId;
+  }
 
   attach(socket: RoomSocket): void {
     this.sockets.push({ socket, player: null });
@@ -552,7 +557,11 @@ function parseClientMessage(rawMessage: string): ClientMessage | null {
 
   const candidate = decoded as Record<string, unknown>;
   if (candidate.t === "hello") {
-    const player = parseMatchmakePlayer(candidate);
+    const playerPayload =
+      candidate.player && typeof candidate.player === "object"
+        ? candidate.player
+        : candidate;
+    const player = parseMatchmakePlayer(playerPayload);
     return player ? { t: "hello", player } : null;
   }
   if (candidate.t === "guard") {

@@ -190,7 +190,7 @@ export function Duel() {
       />
     );
   }
-  if (identity.mode === "ranked") {
+  if (identity.mode === "ranked" || identity.mode === "private" || identity.mode === "tournament") {
     return (
       <RankedDuelGame
         identity={identity}
@@ -347,6 +347,8 @@ function RankedDuelGame({
     initialPlayerZ: PLAYER_Z,
     initialOpponentZ: OPPONENT_Z,
     identity: { name: identity.name, saberColor: identity.saberColor },
+    roomId: directRoomIdForIdentity(identity),
+    recordResult: identity.mode === "ranked",
   });
   const caRef = useRef<ChromaticAberrationEffect | null>(null);
   const vigRef = useRef<VignetteEffect | null>(null);
@@ -434,9 +436,24 @@ function RankedDuelGame({
         opponentName={opponentName}
         opponentAccent={opponentAccent}
       />
-      <RankedOverlay summary={ranked.summary} onCancel={handleLeave} />
+      <RankedOverlay
+        summary={ranked.summary}
+        onCancel={handleLeave}
+        mode={identity.mode}
+        roomCode={identity.roomCode}
+      />
     </div>
   );
+}
+
+function directRoomIdForIdentity(identity: Identity): string | undefined {
+  if (identity.mode === "private" && identity.roomCode) {
+    return `private-${identity.roomCode}`;
+  }
+  if (identity.mode === "tournament" && identity.roomCode) {
+    return `tournament-${identity.roomCode}`;
+  }
+  return undefined;
 }
 
 /**
@@ -448,9 +465,13 @@ function RankedDuelGame({
 function RankedOverlay({
   summary,
   onCancel,
+  mode,
+  roomCode,
 }: {
   summary: RankedSummary;
   onCancel: () => void;
+  mode: Identity["mode"];
+  roomCode?: string;
 }) {
   if (summary.status === "in_match") return null;
 
@@ -459,8 +480,11 @@ function RankedOverlay({
   let showCancel = true;
   switch (summary.status) {
     case "matchmaking":
-      title = "FINDING DUELIST";
-      subtitle = "connecting to ranked queue…";
+      title = mode === "ranked" ? "FINDING DUELIST" : "OPENING ROOM";
+      subtitle =
+        mode === "ranked"
+          ? "connecting to ranked queue…"
+          : `${mode === "tournament" ? "tournament match" : "private room"} ${roomCode ?? ""}`;
       break;
     case "queued":
       title = "IN QUEUE";
@@ -470,12 +494,15 @@ function RankedOverlay({
           : "waiting for an opponent in your rating range";
       break;
     case "connecting":
-      title = "MATCH FOUND";
+      title = mode === "ranked" ? "MATCH FOUND" : "ROOM READY";
       subtitle = "connecting to room…";
       break;
     case "waitingForOpponent":
-      title = "READY";
-      subtitle = "waiting for opponent to load…";
+      title = mode === "ranked" ? "READY" : roomCode ?? "READY";
+      subtitle =
+        mode === "ranked"
+          ? "waiting for opponent to load…"
+          : "share this code with your opponent";
       break;
     case "match_over": {
       const ours =

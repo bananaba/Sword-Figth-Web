@@ -30,13 +30,14 @@ const MAX_NAME_LEN = 16;
 const DEFAULT_NAME = "Duelist";
 const DEFAULT_SABER = "#38bdf8";
 
-export type DuelMode = "solo" | "ranked";
+export type DuelMode = "solo" | "ranked" | "private" | "tournament";
 
 export interface Identity {
   name: string;
   saberColor: string;
   /** Mode is chosen each session — not persisted. */
   mode: DuelMode;
+  roomCode?: string;
 }
 
 /**
@@ -78,8 +79,13 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
     }
     return DEFAULT_SABER;
   });
+  const [roomCode, setRoomCode] = useState("");
+  const [tournamentCode, setTournamentCode] = useState("");
+  const [tournamentMatch, setTournamentMatch] = useState("SF-A");
+  const [generatedPrivateCode] = useState(makeRoomCode);
+  const [generatedTournamentCode] = useState(makeRoomCode);
 
-  const handleStart = (mode: DuelMode): void => {
+  const handleStart = (mode: DuelMode, code?: string): void => {
     const trimmed = name.trim().slice(0, MAX_NAME_LEN);
     const finalName = trimmed || DEFAULT_NAME;
     try {
@@ -88,8 +94,11 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
     } catch {
       /* localStorage may be disabled — proceed without persisting */
     }
-    onStart({ name: finalName, saberColor, mode });
+    onStart({ name: finalName, saberColor, mode, roomCode: code });
   };
+
+  const normalizedPrivateCode = normalizeRoomCode(roomCode);
+  const normalizedTournamentCode = normalizeRoomCode(tournamentCode);
 
   return (
     <div
@@ -253,6 +262,74 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
             Ranked Online
           </button>
         </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: 10,
+            alignItems: "end",
+          }}
+        >
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "#94a3b8", letterSpacing: 1 }}>
+              PRIVATE ROOM
+            </span>
+            <input
+              type="text"
+              value={roomCode}
+              maxLength={12}
+              placeholder={generatedPrivateCode}
+              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleStart("private", normalizedPrivateCode || generatedPrivateCode);
+                }
+              }}
+              style={inputStyle(saberColor)}
+            />
+          </label>
+          <button
+            onClick={() => handleStart("private", normalizedPrivateCode || generatedPrivateCode)}
+            style={secondaryButtonStyle(saberColor)}
+          >
+            Join
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", letterSpacing: 1 }}>
+            4-PLAYER TOURNAMENT
+          </span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10 }}>
+            <input
+              type="text"
+              value={tournamentCode}
+              maxLength={12}
+              placeholder={generatedTournamentCode}
+              onChange={(e) => setTournamentCode(e.target.value.toUpperCase())}
+              style={inputStyle(saberColor)}
+            />
+            <select
+              value={tournamentMatch}
+              onChange={(e) => setTournamentMatch(e.target.value)}
+              style={inputStyle(saberColor)}
+            >
+              <option value="SF-A">Semi A</option>
+              <option value="SF-B">Semi B</option>
+              <option value="FINAL">Final</option>
+            </select>
+          </div>
+          <button
+            onClick={() => {
+              const code = normalizedTournamentCode || generatedTournamentCode;
+              handleStart("tournament", `${code}-${tournamentMatch}`);
+            }}
+            style={secondaryButtonStyle(saberColor)}
+          >
+            Open Tournament Match
+          </button>
+        </div>
       </div>
 
       {onShowLeaderboard && (
@@ -288,4 +365,50 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
       </div>
     </div>
   );
+}
+
+function normalizeRoomCode(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 18);
+}
+
+function makeRoomCode(): string {
+  const bytes = new Uint8Array(3);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => b.toString(36).padStart(2, "0"))
+    .join("")
+    .toUpperCase()
+    .slice(0, 6);
+}
+
+function inputStyle(accent: string): React.CSSProperties {
+  return {
+    padding: "10px 12px",
+    fontSize: 16,
+    fontWeight: 700,
+    background: "rgba(2,6,23,0.6)",
+    border: `1px solid ${accent}`,
+    borderRadius: 8,
+    color: "#f1f5f9",
+    outline: "none",
+    fontFamily: "ui-sans-serif, system-ui",
+  };
+}
+
+function secondaryButtonStyle(accent: string): React.CSSProperties {
+  return {
+    padding: "10px 14px",
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 1.5,
+    color: "#e2e8f0",
+    background: "rgba(2,6,23,0.6)",
+    border: `1px solid ${accent}`,
+    borderRadius: 8,
+    cursor: "pointer",
+    textTransform: "uppercase",
+  };
 }

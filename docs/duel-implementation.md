@@ -39,7 +39,7 @@ worker/src/            # Cloudflare Worker + Durable Objects 권위 랭크 서�
   ImpactRings.tsx       # outcome 발화 시 확장 링 풀 (Phase 8) — useImpacts 스토어 구독
   TitleScreen.tsx       # 이름 + 5 세이버 색 프리셋 + Solo/Ranked 모드 토글 (Phase 9.5/11b)
   useDuelLoop.ts        # 솔로 모드 매치 상태머신, pendingAttack, 가드, 물리 tick — outcome 시 dispatchImpactFx 호출
-  useRankedMatch.ts     # 랭크 모드 어댑터 (Phase 11b) — UseDuelLoop과 같은 shape, 서버 state 인터폴레이션, impact 메시지 → dispatchImpactFx
+  useRankedMatch.ts     # 온라인 듀얼 어댑터 (Ranked/Private/Tournament) — server state interpolation, impact → dispatchImpactFx
   useMouseInput.ts      # drag-release 슬라이스 / dbl·middle 찌르기 / R-hold 가드
   ai.ts                 # 봇 의사결정 (가드 각도, 슬라이스/찌르기, smart-slice)
   dispatchImpactFx.ts   # 5축 FX 단일 진입점 (Phase 10a) — ring·shake·time·flash·vibrate ±1 프레임 동시 발화
@@ -303,7 +303,7 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 - [ ] **`wrangler deploy` + 클라 env 분기** — Worker URL을 클라가 어떻게 받을지 (build-time env vs runtime config).
 - [ ] **인증 / playerId** — 잼 범위에선 `localStorage["chambara.playerId"]` UUID + `["chambara.name"]` 기반. 영속화는 DO SQLite.
 - [ ] **임팩트 시점 동기화** — 현재는 클라가 보낸 attack의 latest guard 판정. 여유 시 최근 200-300ms state history로 rollback 보정.
-- [ ] **사설방/토너먼트** — P1/P2. 랭크 1v1 완성 후 room code와 4/8/16인 bracket으로 확장.
+- [x] **사설방/토너먼트 매치룸** — TitleScreen에서 Private Room code 또는 4-player Tournament match slot(Semi A/Semi B/Final)을 열면 `/rooms/private-*` 또는 `/rooms/tournament-*`에 직접 WS 연결. `record=0`으로 랭크 리더보드/로컬 rating에는 반영하지 않음. 자동 브래킷 진행/결과 집계는 P2.
 - [x] **클라 옵티미스틱 desync 보정** (Phase 11.6) — `useRankedMatch.localPlayerAttackConfirmed` ref. 서버는 모든 outcome(rejected/miss 포함)에 대해 `impact` 메시지 broadcast하므로, `attackerSide === ourSide` 인 impact가 `impactAt + 220ms` 안에 도착하지 않으면 server reject로 간주 → visual 조기 클리어.
 - [x] **server-clock fallback 클램프** (Phase 11.6) — 첫 `state` 메시지 전 `lastServerNow === 0` 케이스에서 stun/cooldown UI를 0으로 클램프. 이전엔 `Date.now()` fallback이 절대 server timestamp와 비교돼 spurious 큰 값 생성.
 - [x] **matchmake retry/backoff** (Phase 11.6) — `pollUntilMatched`에서 fetch 실패 시 exponential backoff (500ms → 8s cap, 2^n). 4xx/abort는 즉시 throw. 네트워크 글리치 시 큐 폴링이 hard-fail 안 함.

@@ -104,6 +104,8 @@ export interface UseRankedMatchOptions {
   initialPlayerZ: number;
   initialOpponentZ: number;
   identity: { name: string; saberColor: string };
+  roomId?: string;
+  recordResult?: boolean;
 }
 
 export interface UseRankedMatchResult extends UseDuelLoop {
@@ -329,7 +331,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
           };
           // Persist the new rating so the next session opens with the right
           // matchmaking range (worker `RankedQueue` matches within ±200).
-          if (msg.ratings) {
+          if (msg.ratings && opts.recordResult !== false) {
             const ourRating =
               ourSide.current === "player"
                 ? msg.ratings.player.after
@@ -338,7 +340,10 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
           }
           updateSummary({
             status: "match_over",
-            matchOver: { winner: localWinner, ratings: msg.ratings },
+            matchOver: {
+              winner: localWinner,
+              ratings: opts.recordResult === false ? null : msg.ratings,
+            },
           });
           break;
         }
@@ -395,7 +400,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
           break;
       }
     },
-    [updateSummary],
+    [opts.recordResult, updateSummary],
   );
 
   // ── Connect once on mount ──────────────────────────────────────────────
@@ -409,23 +414,30 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
     let cancelled = false;
     (async () => {
       try {
-        updateSummary({ status: "matchmaking", errorMessage: null });
-        const roomId = await pollUntilMatched(
-          workerUrl,
-          {
-            playerId,
-            name: opts.identity.name,
-            rating,
-            saberColor: opts.identity.saberColor,
-          },
-          (queueSize) => {
-            if (!cancelled) updateSummary({ status: "queued", queueSize });
-          },
-          abort.signal,
-        );
+        updateSummary({
+          status: opts.roomId ? "connecting" : "matchmaking",
+          errorMessage: null,
+        });
+        const roomId =
+          opts.roomId ??
+          (await pollUntilMatched(
+            workerUrl,
+            {
+              playerId,
+              name: opts.identity.name,
+              rating,
+              saberColor: opts.identity.saberColor,
+            },
+            (queueSize) => {
+              if (!cancelled) updateSummary({ status: "queued", queueSize });
+            },
+            abort.signal,
+          ));
         if (cancelled) return;
         updateSummary({ status: "connecting" });
-        const url = roomWsUrl(workerUrl, roomId);
+        const url = roomWsUrl(workerUrl, roomId, {
+          record: opts.recordResult === false ? "0" : "1",
+        });
         const client = new RankedClient({
           url,
           onMessage: handleServerMessage,
@@ -469,7 +481,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       clientRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts.identity.name, opts.identity.saberColor]);
+  }, [opts.identity.name, opts.identity.saberColor, opts.recordResult, opts.roomId]);
 
   // ── Input handlers ─────────────────────────────────────────────────────
   const handlePlayerAttack = useCallback(

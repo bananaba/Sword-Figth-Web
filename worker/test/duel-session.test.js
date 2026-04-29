@@ -57,6 +57,27 @@ test("DuelRoomSession assigns the first two hello messages to player and opponen
   });
 });
 
+test("DuelRoomSession accepts client protocol hello payload", () => {
+  const session = new DuelRoomSession("private-ROOM1");
+  const socket = fakeSocket();
+
+  session.attach(socket);
+  session.handleMessage(
+    socket,
+    JSON.stringify({
+      t: "hello",
+      player: {
+        playerId: "p1",
+        name: "Ada",
+        rating: 1000,
+        saberColor: "#38bdf8",
+      },
+    }),
+  );
+
+  assert.deepEqual(socket.sent[0], { t: "hello", side: "player", rating: 1000 });
+});
+
 test("DuelRoomSession closes a third player with room_full", () => {
   const session = new DuelRoomSession("ranked-p1-p2");
   const first = fakeSocket();

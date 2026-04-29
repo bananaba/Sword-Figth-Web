@@ -37,6 +37,7 @@ const GLOBAL_LEADERBOARD_NAME = "global";
 
 export class DuelRoom {
   private readonly session: DuelRoomSession;
+  private recordResults = true;
 
   constructor(
     private readonly state: DurableObjectStateLike,
@@ -44,6 +45,7 @@ export class DuelRoom {
   ) {
     this.session = new DuelRoomSession("duel-room", {
       onMatchOver: (event) => {
+        if (!this.recordResults) return;
         // Forward W/L/D + new ratings to the persistent leaderboard DO.
         // Fire-and-forget: a leaderboard write failure must not block the
         // match-end broadcast or wedge the room.
@@ -77,6 +79,14 @@ export class DuelRoom {
   async fetch(request: Request): Promise<Response> {
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return json({ error: "upgrade_required" }, { status: 426 });
+    }
+    const url = new URL(request.url);
+    const roomId = /^\/rooms\/([^/]+)$/.exec(url.pathname)?.[1];
+    if (roomId) {
+      this.session.setRoomId(decodeURIComponent(roomId));
+    }
+    if (url.searchParams.get("record") === "0") {
+      this.recordResults = false;
     }
 
     const pair = createWebSocketPair();

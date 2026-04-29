@@ -29,7 +29,7 @@ PC 개발은 `yarn dev:client` (HTTP). HTTPS는 `?demo=sword` 자이로 모드 �
 
 | URL | 내용 |
 | --- | --- |
-| `/` | **메인 듀얼** — vs AI Bo3, PC 마우스 컨트롤. (Phase 8: Bloom + 라이트세이버 + 트레일 + 임팩트 링/셰이크 + KO splash + 워터 셰이더) |
+| `/` | **메인 듀얼** — Solo vs AI, Ranked Online, Private Room, 4-player Tournament match rooms. PC 마우스 컨트롤. |
 | `/?demo=arena` | Chambara 트레이닝 아레나 — 직각 블록 + 점수 + 슬라이더 (참고 보존) |
 | `/?demo=sword` | 검 각도 입력 프로토타입 (마우스/터치/자이로 — P2용 모바일 검증) |
 | `/?demo=character` | Three.js 휴먼 캐릭터 렌더링 검증 |
