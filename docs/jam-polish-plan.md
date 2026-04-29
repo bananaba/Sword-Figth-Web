@@ -86,7 +86,7 @@
 | 29 | 30Hz `state` broadcast (fighter posX/velX/guard/stun/cooldown) | ✅ 11a | 이동 입력 채널 없음 — outcome-driven movement (`applyOutcome` velX → `tickFighter` 적분) |
 | **11b** | **클라 네트워크 어댑터** | ✅ 완료 | `useRankedMatch` 훅 + `network/{types,matchmake,RankedClient}` — TitleScreen에 Solo/Ranked 토글, /matchmake 폴링, WS hello/ready/guard/attack, `state` posX lerp 인터폴레이션, `impact` → `dispatchImpactFx`, RankedOverlay (queue/connecting/match_over) |
 | **11c** | **퍼시스턴스 + 리더보드** | ✅ 완료 | `Leaderboard` DO (`worker/src/leaderboard.ts`) — `storage.put/get/list` 기반 (KV 인터페이스, SQLite-backed via `new_sqlite_classes`). `playerId → {name, rating, wins, losses, draws, updatedAt}`. matchOver → DuelRoomSession `onMatchOver` 콜백 → DuelRoom이 fire-and-forget으로 internal POST /result 송신. 클라 `/leaderboard` Top 20 + `/me` 라우팅, `LeaderboardView` 컴포넌트 (TitleScreen에 "View Leaderboard" 진입). 30 → 42 worker tests |
-| **11d** | **배포** | ⬜ | `wrangler deploy` + 클라 env 분기 (Worker URL) — Phase 13에서 |
+| **11d** | **배포** | ✅ Phase 13 | `wrangler deploy` (worker) + `wrangler pages deploy` (client) — 라이브 |
 
 ### Phase 11e — Private rooms (~1h, 에셋 0 의존)
 
@@ -117,12 +117,13 @@
 
 ### Phase 13 — 배포 (Day 2 끝, ~2h)
 
-| # | 작업 |
-|---|---|
-| 36 | Cloudflare Pages 또는 Vercel 배포 (client static) — env에 Worker URL 분기 |
-| 37 | Cloudflare Worker + Durable Objects 배포 (`RankedQueue`, `DuelRoom`) |
-| 38 | 잼 컴플라이언스 체크리스트 (`docs/vibe-jam.md` §8): AI 코드 비율 ≥90%, 즉시 로딩, 즉시 멀티플레이 |
-| 39 | iOS Safari 자이로/터치 sanity check (P2지만 30초 컷에서 reject 회피) |
+| # | 작업 | 상태 |
+|---|---|---|
+| 36 | Cloudflare Pages 클라 배포 — `chambara-duel.pages.dev`, `VITE_WORKER_URL` build-time embed | ✅ |
+| 37 | Cloudflare Worker + DO 배포 — `chambara-ranked-worker.200tiger1.workers.dev`, RANKED_QUEUE/DUEL_ROOM/LEADERBOARD v1+v2 마이그레이션 | ✅ |
+| 38 | 잼 컴플라이언스 체크리스트 (`docs/vibe-jam.md` §8): AI 코드 비율 ≥90%, 즉시 로딩, 즉시 멀티플레이 | ⬜ |
+| 39 | iOS Safari 자이로/터치 sanity check (P2지만 30초 컷에서 reject 회피) | ⬜ |
+| 39b | 두 창 라이브 매칭 smoke test — Solo/Ranked → queue → match → state → impact → matchOver → leaderboard | ⬜ (사용자 브라우저) |
 
 ---
 
@@ -218,7 +219,7 @@
 | **11.6 Audit pass + 신뢰성 패치** | **✅ 완료 (2026-04-29, §9 Phase 11.6, 12 patches, 46/46 tests)** | **11a–c, 11.5** |
 | 11e Private rooms | ✅ 완료 (2026-04-29, 49/49 worker tests) | 11b |
 | 12 캐릭터 메시 통합 | ⬜ | **Quaternius + Mixamo 도착**, 9.5(rim 셰이더 패턴) |
-| 13 배포 | ⬜ | 11.6 |
+| **13 배포** | **✅ 완료 (2026-04-29, Workers `chambara-ranked-worker.200tiger1.workers.dev` + Pages `chambara-duel.pages.dev`)** | 11.6 |
 
 각 Phase 완료 시:
 1. `yarn workspace @vibejam/shared build && yarn workspace @vibejam/client typecheck` 통과
