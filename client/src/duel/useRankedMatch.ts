@@ -118,6 +118,12 @@ export interface UseRankedMatchResult extends UseDuelLoop {
 // = snappier (more raw teleports), lower = smoother (more visual lag).
 // 0.32 hides 30Hz state quantization while keeping reactions feel fast.
 const POSITION_LERP = 0.18;
+/**
+ * Blade-tip lerp: cursor moves much faster than knockback drift, so we
+ * track it more aggressively. Still <1.0 so 30 Hz tip snapshots interpolate
+ * into a glide instead of teleporting.
+ */
+const BLADE_TIP_LERP = 0.35;
 
 // Throttle outgoing guard updates to ~30Hz. The render loop ticks 60+Hz so
 // without this we'd flood the WS with redundant guard packets.
@@ -689,12 +695,17 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
         POSITION_LERP,
       );
       opponentVisual.current.guard = to.guard;
-      // Live opponent blade tip — server now broadcasts it inside `state`
-      // (see `FighterNetState.bladeTip`). Falls back to the last known guard
-      // tip when the snapshot doesn't yet carry the field, then to a neutral
-      // chest-up resting pose if neither is available.
-      opponentVisual.current.bladeTipBladePlane = to.bladeTip
+      // Live opponent blade tip — server broadcasts it inside `state` (see
+      // `FighterNetState.bladeTip`). Lerp toward the latest snapshot so 30 Hz
+      // tip updates render as a smooth glide instead of stepping. Fallbacks:
+      // last known guard tip, then a neutral chest-up resting pose.
+      const tipTarget = to.bladeTip
         ?? (to.guard.active ? to.guard.tip : { x: 0, y: SHOULDER_Y + 0.6 });
+      const prevTip = opponentVisual.current.bladeTipBladePlane;
+      opponentVisual.current.bladeTipBladePlane = {
+        x: lerp(prevTip.x, tipTarget.x, BLADE_TIP_LERP),
+        y: lerp(prevTip.y, tipTarget.y, BLADE_TIP_LERP),
+      };
       opponentVisual.current.stunned = haveServerClock && serverNow < to.stunUntil;
       opponentVisual.current.cooldown = haveServerClock && serverNow < to.attackCooldownUntil;
       opponentVisual.current.tradeImmune = false;
