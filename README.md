@@ -2,10 +2,12 @@
 
 피터 레벨스(@levelsio)의 **Cursor Vibe Jam 2026**에 출품할 웹 게임 프로젝트.
 
-**현 컨셉**: Nintendo Switch Sports의 *Chambara* 종목을 웹/모바일로 포팅한 1v1 칼싸움 듀얼. 마우스·터치·폰 자이로로 검 각도를 직접 조작, **두 검이 직각에 가까울 때만 막힘**. 상세는 [`docs/game-design.md`](./docs/game-design.md).
+**현 컨셉**: Nintendo Switch Sports의 *Chambara* 종목을 웹으로 포팅한 1v1 칼싸움 듀얼. 마우스로 검 각도를 직접 조작, **두 검이 직각에 가까울 때만 막힘**. 상세는 [`docs/game-design.md`](./docs/game-design.md).
+
+**플랫폼 / 입력**: PC 1차 타겟. 게임플레이는 **마우스 전용** — 키보드 없이도 풀 플레이 가능 (좌클릭 슬라이스, 휠클릭/Shift+클릭 찌르기, 우클릭 가드). 모바일(터치/자이로) 호환은 잼 마감 전 시간 남으면 추가하는 P2 폴리시.
 
 - **클라이언트**: Vite + React + TypeScript + Three.js (React Three Fiber)
-- **서버**: Colyseus + TypeScript (실시간 멀티플레이 룸 / 상태 동기화)
+- **서버**: Colyseus + TypeScript (Day 2에 사설방 + 랭크용 DuelRoom 추가 예정)
 - **공유**: `shared/` 워크스페이스에 클라/서버 공통 타입
 - **빌드**: Yarn Workspaces (모노레포)
 
@@ -21,14 +23,16 @@ yarn dev:client:https     # iOS 자이로 / LAN 폰 접속용 HTTPS
 
 ## 라이브 데모
 
-`yarn dev:client:https` 후 (LAN IP 확인: `ipconfig getifaddr en0`):
+PC 개발은 `yarn dev:client` (HTTP). HTTPS는 `?demo=sword` 자이로 모드 테스트용일 뿐 메인 게임은 HTTP만으로 충분.
 
 | URL | 내용 |
 | --- | --- |
-| `/?demo=arena` | **Chambara 트레이닝 아레나** — 직각 블록 + 점수 + 슬라이더 |
-| `/?demo=sword` | 검 각도 입력 프로토타입 (마우스/터치/자이로) |
+| `/` | **메인 듀얼** — vs AI Bo3, PC 마우스 컨트롤. (Phase 7 빌드) |
+| `/?demo=arena` | Chambara 트레이닝 아레나 — 직각 블록 + 점수 + 슬라이더 (참고 보존) |
+| `/?demo=sword` | 검 각도 입력 프로토타입 (마우스/터치/자이로 — P2용 모바일 검증) |
 | `/?demo=character` | Three.js 휴먼 캐릭터 렌더링 검증 |
-| `/` | 비행기 스캐폴드 (컨셉 폐기, 인프라 검증용) |
+| `/?demo=duel-input` | 2D SVG로 resolver 룰 검증 |
+| `/?demo=scaffold` | 폐기된 비행기 스캐폴드 (R3F+Colyseus 인프라 검증용) |
 
 ## 문서
 

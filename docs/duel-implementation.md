@@ -4,6 +4,8 @@
 >
 > `docs/game-design.md`가 *컨셉/요구사항* 문서라면 본 문서는 *현재 빌드된 시스템*의 레퍼런스.
 > 파일 경로, 책임 분리, 룰 → 코드 매핑, 튜닝 노브, 미해결 항목 정리.
+>
+> **플랫폼 / 입력**: PC 1차, **마우스 전용** (키보드 미사용). 좌클릭 슬라이스 / 휠클릭+Shift 찌르기 / 우클릭 가드. 모바일 입력 코드(`useSwordInput.ts`의 자이로/터치)는 `?demo=sword`에서만 활성 — 메인 `/` 라우트는 PC 마우스 입력만. 모바일 호환은 P2 폴리시. (D키는 개발자 전용 debug panel 토글로 게임플레이 입력에 포함 안 됨.)
 
 ---
 
@@ -313,4 +315,4 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 - [`docs/setup.md`](./setup.md) — 개발 환경
 - [`claudedocs/research_chambara_20260428.md`](../claudedocs/research_chambara_20260428.md) — Switch Sports Chambara 메카닉 리서치 보고서
 - [`claudedocs/research_chambara_visuals_20260429.md`](../claudedocs/research_chambara_visuals_20260429.md) — 시각 처리 리서치 (R3F + Bloom + 라이트세이버 톤)
-- [`docs/예시 이미지1.webp`](./예시 이미지1.webp) / [`이미지2.jpg`](./예시 이미지2.jpg) / [`이미지3.jpg`](./예시 이미지3.jpg) — Switch Sports 챔버라 스크린샷 (카메라 앵글, 검 글로우, 스턴 별 인디케이터 레퍼런스)
+- `docs/references/chambara-ref-{1,2,3}.{webp,jpg}` — Switch Sports 챔버라 스크린샷 (카메라 앵글, 검 글로우, 스턴 별 인디케이터 레퍼런스)
