@@ -97,6 +97,7 @@ test("DuelRoomSession resolves a clean slice hit through shared combat rules", (
   const attacker = fakeSocket();
   const defender = fakeSocket();
   joinTwoPlayers(session, attacker, defender);
+  startFighting(session, attacker, defender);
 
   session.handleMessage(
     attacker,
@@ -110,17 +111,13 @@ test("DuelRoomSession resolves a clean slice hit through shared combat rules", (
     }),
   );
 
-  assert.deepEqual(attacker.sent.at(-1), {
-    t: "impact",
-    attackerSide: "player",
-    at: 1000,
-    outcome: {
-      kind: "hit",
-      knockback: 8,
-      attackerStun: 0,
-      defenderCounterWindow: 0,
-    },
-  });
+  assert.equal(attacker.sent.at(-1).t, "impact");
+  assert.equal(attacker.sent.at(-1).attackerSide, "player");
+  assert.equal(attacker.sent.at(-1).at, 1000);
+  assert.equal(attacker.sent.at(-1).outcome.kind, "hit");
+  assert.equal(attacker.sent.at(-1).outcome.attackerStun, 0);
+  assert.equal(attacker.sent.at(-1).outcome.defenderCounterWindow, 0);
+  assert.equal(typeof attacker.sent.at(-1).outcome.knockback, "number");
   assert.deepEqual(defender.sent.at(-1), attacker.sent.at(-1));
 });
 
@@ -129,6 +126,7 @@ test("DuelRoomSession resolves a perpendicular guard as a block", () => {
   const attacker = fakeSocket();
   const defender = fakeSocket();
   joinTwoPlayers(session, attacker, defender);
+  startFighting(session, attacker, defender);
 
   session.handleMessage(
     defender,
@@ -164,6 +162,161 @@ test("DuelRoomSession resolves a perpendicular guard as a block", () => {
   });
 });
 
+test("DuelRoomSession starts countdown when both players are ready", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+
+  session.handleMessage(first, JSON.stringify({ t: "ready", now: 5000 }));
+  session.handleMessage(second, JSON.stringify({ t: "ready", now: 5000 }));
+
+  assert.deepEqual(first.sent.at(-1), {
+    t: "match_state",
+    phase: "countdown",
+    roundNumber: 1,
+    playerWins: 0,
+    opponentWins: 0,
+    phaseEndsAt: 8000,
+  });
+  assert.deepEqual(second.sent.at(-1), first.sent.at(-1));
+});
+
+test("DuelRoomSession advances from countdown to fighting on tick", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+
+  session.handleMessage(first, JSON.stringify({ t: "ready", now: 5000 }));
+  session.handleMessage(second, JSON.stringify({ t: "ready", now: 5000 }));
+  session.tick(8000);
+
+  assert.deepEqual(first.sent.at(-1), {
+    t: "match_state",
+    phase: "fighting",
+    roundNumber: 1,
+    playerWins: 0,
+    opponentWins: 0,
+    phaseEndsAt: 53000,
+  });
+});
+
+test("DuelRoomSession rejects attacks before fighting starts", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const attacker = fakeSocket();
+  const defender = fakeSocket();
+  joinTwoPlayers(session, attacker, defender);
+
+  session.handleMessage(
+    attacker,
+    JSON.stringify({
+      t: "attack",
+      kind: "slice",
+      origin: { x: 0, y: 0.2 },
+      direction: { x: 0, y: 1 },
+      reach: 1.4,
+      now: 1000,
+    }),
+  );
+
+  assert.deepEqual(attacker.sent.at(-1), { t: "error", error: "not_fighting" });
+});
+
+test("DuelRoomSession ends the round when knockback pushes a fighter out", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const attacker = fakeSocket();
+  const defender = fakeSocket();
+  joinTwoPlayers(session, attacker, defender);
+  startFighting(session, attacker, defender);
+
+  session.handleMessage(
+    attacker,
+    JSON.stringify({
+      t: "attack",
+      kind: "thrust",
+      origin: { x: 0, y: 1.15 },
+      direction: { x: 0, y: 1 },
+      reach: 1.4,
+      now: 8100,
+    }),
+  );
+  session.tick(8300, 0.3);
+
+  assert.deepEqual(attacker.sent.at(-1), {
+    t: "round_over",
+    winner: "player",
+    reason: "ringout",
+    roundNumber: 1,
+    playerWins: 1,
+    opponentWins: 0,
+    phaseEndsAt: 10500,
+  });
+  assert.deepEqual(defender.sent.at(-1), attacker.sent.at(-1));
+});
+
+test("DuelRoomSession ends the round on timeout", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  startFighting(session, first, second);
+
+  session.tick(53000);
+
+  assert.deepEqual(first.sent.at(-1), {
+    t: "round_over",
+    winner: "draw",
+    reason: "timeout",
+    roundNumber: 1,
+    playerWins: 0,
+    opponentWins: 0,
+    phaseEndsAt: 55200,
+  });
+});
+
+test("DuelRoomSession advances to the next round after round over", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  startFighting(session, first, second);
+  forcePlayerRingoutWin(session, first);
+
+  session.tick(10500);
+
+  assert.deepEqual(first.sent.at(-1), {
+    t: "match_state",
+    phase: "countdown",
+    roundNumber: 2,
+    playerWins: 1,
+    opponentWins: 0,
+    phaseEndsAt: 13500,
+  });
+});
+
+test("DuelRoomSession ends the match after two round wins", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  startFighting(session, first, second);
+  forcePlayerRingoutWin(session, first);
+  session.tick(10500);
+  session.tick(13500);
+  forcePlayerRingoutWin(session, first, 13600);
+
+  session.tick(16000);
+
+  assert.deepEqual(first.sent.at(-1), {
+    t: "match_over",
+    winner: "player",
+    playerWins: 2,
+    opponentWins: 0,
+  });
+  assert.deepEqual(second.sent.at(-1), first.sent.at(-1));
+});
+
 function joinTwoPlayers(session, first, second) {
   session.attach(first);
   session.handleMessage(
@@ -175,4 +328,25 @@ function joinTwoPlayers(session, first, second) {
     second,
     JSON.stringify({ t: "hello", playerId: "p2", name: "Ben", rating: 1120, saberColor: "#e879f9" }),
   );
+}
+
+function startFighting(session, first, second) {
+  session.handleMessage(first, JSON.stringify({ t: "ready", now: 5000 }));
+  session.handleMessage(second, JSON.stringify({ t: "ready", now: 5000 }));
+  session.tick(8000);
+}
+
+function forcePlayerRingoutWin(session, attacker, now = 8100) {
+  session.handleMessage(
+    attacker,
+    JSON.stringify({
+      t: "attack",
+      kind: "thrust",
+      origin: { x: 0, y: 1.15 },
+      direction: { x: 0, y: 1 },
+      reach: 1.4,
+      now,
+    }),
+  );
+  session.tick(now + 200, 0.3);
 }

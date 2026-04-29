@@ -1,17 +1,20 @@
 import {
-  BASIC_SWORD,
   applyOutcome,
   resolveAttack,
+  tickFighter,
   type AttackEvent,
   type BodyHitbox,
   type FighterState,
   type GuardSnapshot,
   type Outcome,
   type Vec2,
+  type WeaponStats,
 } from "@vibejam/shared";
+import * as Combat from "@vibejam/shared";
 import { parseMatchmakePlayer, type MatchmakePlayer } from "./protocol.js";
 
 export type DuelSide = "player" | "opponent";
+type MatchPhase = "waiting" | "countdown" | "fighting" | "roundOver" | "matchOver";
 
 export interface RoomSocket {
   send(message: string): void;
@@ -29,10 +32,12 @@ interface AttachedSocket {
 
 export class DuelRoomSession {
   private readonly sockets: AttachedSocket[] = [];
+  private readonly ready = new Set<DuelSide>();
   private readonly fighters: Record<DuelSide, FighterState> = {
-    player: freshFighter(),
-    opponent: freshFighter(),
+    player: freshFighter(INITIAL_PLAYER_POS),
+    opponent: freshFighter(INITIAL_OPPONENT_POS),
   };
+  private match = initialMatch();
 
   constructor(private readonly roomId: string) {}
 
@@ -61,6 +66,10 @@ export class DuelRoomSession {
     }
     if (message.t === "guard") {
       this.handleGuard(socket, message);
+      return;
+    }
+    if (message.t === "ready") {
+      this.handleReady(socket, message);
       return;
     }
     if (message.t === "attack") {
@@ -105,10 +114,31 @@ export class DuelRoomSession {
     };
   }
 
+  private handleReady(socket: RoomSocket, message: ReadyMessage): void {
+    const side = this.sideForSocket(socket);
+    if (!side) {
+      send(socket, { t: "error", error: "hello_required" });
+      return;
+    }
+    this.ready.add(side);
+    if (this.match.phase === "waiting" && this.ready.has("player") && this.ready.has("opponent")) {
+      this.match = {
+        ...this.match,
+        phase: "countdown",
+        phaseEndsAt: message.now + COUNTDOWN_MS,
+      };
+      this.broadcastMatchState();
+    }
+  }
+
   private handleAttack(socket: RoomSocket, message: AttackMessage): void {
     const attackerSide = this.sideForSocket(socket);
     if (!attackerSide) {
       send(socket, { t: "error", error: "hello_required" });
+      return;
+    }
+    if (this.match.phase !== "fighting") {
+      send(socket, { t: "error", error: "not_fighting" });
       return;
     }
     const defenderSide = otherSide(attackerSide);
@@ -119,7 +149,7 @@ export class DuelRoomSession {
       defender,
       DEFAULT_BODY,
       message.event,
-      BASIC_SWORD,
+      DEFAULT_WEAPON,
       message.now,
     );
     const next = applyOutcome(
@@ -128,7 +158,7 @@ export class DuelRoomSession {
       outcome,
       attackerSide === "player" ? 1 : -1,
       message.now,
-      BASIC_SWORD,
+      DEFAULT_WEAPON,
     );
     this.fighters[attackerSide] = next.attacker;
     this.fighters[defenderSide] = next.defender;
@@ -175,6 +205,52 @@ export class DuelRoomSession {
     }
   }
 
+  tick(now: number, dtSeconds = 0): void {
+    if (this.match.phase === "roundOver" && now >= this.match.phaseEndsAt) {
+      if (this.match.playerWins >= WINS_TO_TAKE_MATCH || this.match.opponentWins >= WINS_TO_TAKE_MATCH) {
+        this.endMatch();
+        return;
+      }
+      this.resetRoundFighters();
+      this.match = {
+        ...this.match,
+        phase: "countdown",
+        roundNumber: this.match.roundNumber + 1,
+        phaseEndsAt: now + COUNTDOWN_MS,
+      };
+      this.broadcastMatchState();
+      return;
+    }
+
+    if (this.match.phase === "countdown" && now >= this.match.phaseEndsAt) {
+      this.resetRoundFighters();
+      this.match = {
+        ...this.match,
+        phase: "fighting",
+        phaseEndsAt: now + ROUND_DURATION_MS,
+      };
+      this.broadcastMatchState();
+      return;
+    }
+
+    if (this.match.phase === "fighting") {
+      if (dtSeconds > 0) {
+        this.fighters.player = tickFighter(this.fighters.player, dtSeconds, FRICTION);
+        this.fighters.opponent = tickFighter(this.fighters.opponent, dtSeconds, FRICTION);
+      }
+
+      const ringoutWinner = this.ringoutWinner();
+      if (ringoutWinner) {
+        this.endRound(ringoutWinner, "ringout", now);
+        return;
+      }
+
+      if (now >= this.match.phaseEndsAt) {
+        this.endRound("draw", "timeout", now);
+      }
+    }
+  }
+
   private broadcastImpact(attackerSide: DuelSide, at: number, outcome: Outcome): void {
     this.broadcast({
       t: "impact",
@@ -184,12 +260,72 @@ export class DuelRoomSession {
     });
   }
 
+  private broadcastMatchState(): void {
+    this.broadcast({
+      t: "match_state",
+      phase: this.match.phase,
+      roundNumber: this.match.roundNumber,
+      playerWins: this.match.playerWins,
+      opponentWins: this.match.opponentWins,
+      phaseEndsAt: this.match.phaseEndsAt,
+    });
+  }
+
+  private resetRoundFighters(): void {
+    this.fighters.player = freshFighter(INITIAL_PLAYER_POS);
+    this.fighters.opponent = freshFighter(INITIAL_OPPONENT_POS);
+  }
+
+  private ringoutWinner(): RoundWinner | null {
+    const playerOut = this.fighters.player.posX < -ARENA_RADIUS;
+    const opponentOut = this.fighters.opponent.posX > ARENA_RADIUS;
+    if (playerOut && opponentOut) return "draw";
+    if (playerOut) return "opponent";
+    if (opponentOut) return "player";
+    return null;
+  }
+
+  private endRound(winner: RoundWinner, reason: RoundReason, now: number): void {
+    const playerWins = this.match.playerWins + (winner === "player" ? 1 : 0);
+    const opponentWins = this.match.opponentWins + (winner === "opponent" ? 1 : 0);
+    this.match = {
+      ...this.match,
+      phase: "roundOver",
+      playerWins,
+      opponentWins,
+      phaseEndsAt: now + ROUND_OVER_MS,
+    };
+    this.broadcast({
+      t: "round_over",
+      winner,
+      reason,
+      roundNumber: this.match.roundNumber,
+      playerWins,
+      opponentWins,
+      phaseEndsAt: this.match.phaseEndsAt,
+    });
+  }
+
+  private endMatch(): void {
+    const winner = this.match.playerWins > this.match.opponentWins ? "player" : "opponent";
+    this.match = {
+      ...this.match,
+      phase: "matchOver",
+    };
+    this.broadcast({
+      t: "match_over",
+      winner,
+      playerWins: this.match.playerWins,
+      opponentWins: this.match.opponentWins,
+    });
+  }
+
   private sideForSocket(socket: RoomSocket): DuelSide | null {
     return this.sockets.find((entry) => entry.socket === socket)?.player?.side ?? null;
   }
 }
 
-type ClientMessage = HelloMessage | GuardMessage | AttackMessage;
+type ClientMessage = HelloMessage | GuardMessage | ReadyMessage | AttackMessage;
 
 interface HelloMessage {
   t: "hello";
@@ -199,6 +335,11 @@ interface HelloMessage {
 interface GuardMessage {
   t: "guard";
   guard: GuardSnapshot;
+}
+
+interface ReadyMessage {
+  t: "ready";
+  now: number;
 }
 
 interface AttackMessage {
@@ -214,9 +355,41 @@ const DEFAULT_BODY: BodyHitbox = {
   maxY: 1.7,
 };
 
-function freshFighter(): FighterState {
+const DEFAULT_WEAPON = resolveDefaultWeapon();
+
+const COUNTDOWN_MS = 3000;
+const ROUND_DURATION_MS = 45_000;
+const ROUND_OVER_MS = 2200;
+const WINS_TO_TAKE_MATCH = 2;
+const INITIAL_PLAYER_POS = -1.6;
+const INITIAL_OPPONENT_POS = 1.6;
+const ARENA_RADIUS = 4.2;
+const FRICTION = 5.0;
+
+type RoundWinner = "player" | "opponent" | "draw";
+type RoundReason = "ringout" | "timeout";
+
+interface ServerMatchState {
+  phase: MatchPhase;
+  roundNumber: number;
+  playerWins: number;
+  opponentWins: number;
+  phaseEndsAt: number;
+}
+
+function initialMatch(): ServerMatchState {
   return {
-    posX: 0,
+    phase: "waiting",
+    roundNumber: 1,
+    playerWins: 0,
+    opponentWins: 0,
+    phaseEndsAt: 0,
+  };
+}
+
+function freshFighter(posX: number): FighterState {
+  return {
+    posX,
     velX: 0,
     attackCooldownUntil: 0,
     stunUntil: 0,
@@ -228,6 +401,15 @@ function freshFighter(): FighterState {
       tip: { x: 0, y: 1.15 },
     },
   };
+}
+
+function resolveDefaultWeapon(): WeaponStats {
+  const combat = Combat as unknown as { PLASMA_BLADE?: WeaponStats; BASIC_SWORD?: WeaponStats };
+  const weapon = combat.PLASMA_BLADE ?? combat.BASIC_SWORD;
+  if (!weapon) {
+    throw new Error("No default weapon exported from @vibejam/shared");
+  }
+  return weapon;
 }
 
 function parseClientMessage(rawMessage: string): ClientMessage | null {
@@ -247,6 +429,10 @@ function parseClientMessage(rawMessage: string): ClientMessage | null {
   if (candidate.t === "guard") {
     const guard = parseGuard(candidate);
     return guard ? { t: "guard", guard } : null;
+  }
+  if (candidate.t === "ready") {
+    const now = parseNumber(candidate.now);
+    return now !== null ? { t: "ready", now } : null;
   }
   if (candidate.t === "attack") {
     const event = parseAttack(candidate);
