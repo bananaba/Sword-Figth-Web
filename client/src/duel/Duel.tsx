@@ -475,6 +475,15 @@ function RankedOverlay({
   let title = "";
   let subtitle = "";
   let showCancel = true;
+  let titleColor = "#7dd3fc";
+  let titleGlow = "#38bdf8";
+  let won: boolean | null = null;
+  let ratings: {
+    before: number;
+    after: number;
+    delta: number;
+  } | null = null;
+
   switch (summary.status) {
     case "matchmaking":
       title = mode === "ranked" ? "FINDING DUELIST" : "OPENING ROOM";
@@ -502,27 +511,33 @@ function RankedOverlay({
           : "share this code with your opponent";
       break;
     case "match_over": {
-      const ours =
+      ratings =
         summary.matchOver?.ratings?.player ??
         summary.matchOver?.ratings?.opponent ??
         null;
-      const won = summary.matchOver?.winner === "player";
+      won = summary.matchOver?.winner === "player";
       title = won ? "VICTORY" : "DEFEAT";
-      subtitle = ours
-        ? `rating ${ours.before} → ${ours.after} (${ours.delta >= 0 ? "+" : ""}${ours.delta})`
-        : "rating unchanged";
+      titleColor = won ? "#fbbf24" : "#f87171";
+      titleGlow = won ? "#f59e0b" : "#dc2626";
+      subtitle = "";
       showCancel = true;
       break;
     }
     case "disconnected":
       title = "DISCONNECTED";
       subtitle = "connection lost";
+      titleColor = "#f87171";
+      titleGlow = "#dc2626";
       break;
     case "error":
       title = "ERROR";
       subtitle = summary.errorMessage ?? "could not connect";
+      titleColor = "#f87171";
+      titleGlow = "#dc2626";
       break;
   }
+
+  const isMatchOver = summary.status === "match_over";
 
   return (
     <div
@@ -543,19 +558,61 @@ function RankedOverlay({
     >
       <div
         style={{
-          fontSize: 36,
+          fontSize: isMatchOver ? 64 : 36,
           fontWeight: 900,
-          letterSpacing: 8,
-          color: "#7dd3fc",
-          textShadow: "0 0 24px #38bdf8",
+          letterSpacing: isMatchOver ? 12 : 8,
+          color: titleColor,
+          textShadow: `0 0 28px ${titleGlow}, 0 0 56px ${titleGlow}`,
           fontFamily: "ui-monospace, monospace",
+          animation: isMatchOver ? "rankedPopIn 360ms ease-out both" : undefined,
         }}
       >
         {title}
       </div>
-      <div style={{ fontSize: 14, color: "#94a3b8", letterSpacing: 1 }}>
-        {subtitle}
-      </div>
+      {isMatchOver && ratings && (
+        <>
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 56,
+              fontWeight: 900,
+              fontFamily: "ui-monospace, monospace",
+              letterSpacing: 2,
+              color:
+                ratings.delta > 0
+                  ? "#34d399"
+                  : ratings.delta < 0
+                    ? "#fb7185"
+                    : "#cbd5e1",
+              textShadow:
+                ratings.delta > 0
+                  ? "0 0 24px #10b981"
+                  : ratings.delta < 0
+                    ? "0 0 24px #e11d48"
+                    : "0 0 12px #475569",
+              animation: "rankedDeltaPop 460ms 180ms ease-out both",
+            }}
+          >
+            {ratings.delta > 0 ? "+" : ""}
+            {ratings.delta}
+          </div>
+          <div
+            style={{
+              fontSize: 14,
+              color: "#94a3b8",
+              letterSpacing: 2,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            rating&nbsp;{ratings.before}&nbsp;→&nbsp;{ratings.after}
+          </div>
+        </>
+      )}
+      {!isMatchOver && subtitle && (
+        <div style={{ fontSize: 14, color: "#94a3b8", letterSpacing: 1 }}>
+          {subtitle}
+        </div>
+      )}
       {showCancel && (
         <button
           onClick={onCancel}
@@ -573,9 +630,21 @@ function RankedOverlay({
             textTransform: "uppercase",
           }}
         >
-          {summary.status === "match_over" ? "Back to Title" : "Cancel"}
+          {isMatchOver ? "Back to Title" : "Cancel"}
         </button>
       )}
+      <style>{`
+        @keyframes rankedPopIn {
+          0% { transform: scale(0.6); opacity: 0; }
+          70% { transform: scale(1.08); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes rankedDeltaPop {
+          0% { transform: scale(0.4); opacity: 0; }
+          60% { transform: scale(1.18); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
