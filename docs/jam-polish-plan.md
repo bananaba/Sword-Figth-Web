@@ -75,15 +75,18 @@
 
 ### Phase 11 — Ranked Cloudflare multiplayer (Day 2, ~6-8h)
 
-| # | 작업 | 비고 |
-|---|---|---|
-| 23 | Cloudflare Worker entrypoint + WebSocket upgrade 라우팅 | `/matchmake`, `/leaderboard`, `/ws/:roomId` |
-| 24 | `RankedQueue` Durable Object — ELO ±200 큐, 30초 후 범위 확장 | 사설방보다 랭크 P0 |
-| 25 | `DuelRoom` Durable Object — `shared/combat/resolver` 서버 권위 호출 | 클라는 입력/가드 snapshot만 송신 |
-| 26 | `playerId`, `name`, `saberColor`, `rating` payload 연결 | Phase 9.5 localStorage 값 그대로 송신 |
-| 27 | ELO(K=32) 저장 + Top 20 leaderboard | DO SQLite 우선, KV cache 선택 |
-| 28 | 서버 outcome 브로드캐스트 → 클라 `dispatchImpactFx(outcome, ctx)` 한 줄로 흡수 | Phase 10a 인프라가 깔려 있으면 추가 시간 0 |
-| 29 | 인터폴레이션 버퍼 + hit-stop은 클라 visual 전용 | 서버 sim tick 30Hz minimum / 60Hz preferred |
+| # | 작업 | 상태 | 비고 |
+|---|---|---|---|
+| 23 | Cloudflare Worker entrypoint + WebSocket upgrade 라우팅 | ✅ 11a | `/healthz`, `/leaderboard`(stub), `/matchmake`, `/rooms/:id`, `OPTIONS` |
+| 24 | `RankedQueue` Durable Object — ELO ±200 큐 | ✅ 11a (in-memory) | 30s 범위 확장 + 영속화는 P1 |
+| 25 | `DuelRoom` Durable Object — 권위 호출 | ✅ 11a | hello/ready/guard/attack 핸들링, alarm 30Hz tick, ringout/timeout, matchOver+ELO |
+| 26 | `playerId`, `name`, `rating`, `saberColor` payload 연결 | ✅ 11a (서버 측) | 클라 어댑터에서 localStorage 송신은 Phase 11b |
+| 27 | ELO(K=32) 산출 | ✅ 11a (matchOver payload) | rating 영속화 + Top 20 leaderboard는 Phase 11c |
+| 28 | 서버 outcome 브로드캐스트 (`impact` 메시지) | ✅ 11a | 클라 흡수는 Phase 11b + 10a 디스패처 |
+| 29 | 30Hz `state` broadcast (fighter posX/velX/guard/stun/cooldown) | ✅ 11a | 이동 입력 채널 없음 — outcome-driven movement (`applyOutcome` velX → `tickFighter` 적분) |
+| **11b** | **클라 네트워크 어댑터** | ⬜ 다음 작업 | `useRankedMatch` 훅, WS 연결, `state` 인터폴레이션 버퍼, `impact` → `dispatchImpactFx` |
+| **11c** | **퍼시스턴스 + 리더보드** | ⬜ | DO SQLite로 `playerId → rating, wins, losses, draws`. matchOver 시 write, `/leaderboard` Top 20 read, `/me` 조회 |
+| **11d** | **배포** | ⬜ | `wrangler deploy` + 클라 env 분기 (Worker URL) — Phase 13에서 |
 
 ### Phase 11.5 — Sparks 파티클 (~2h, 에셋 0 의존)
 
@@ -196,10 +199,12 @@
 | Phase | 상태 | 의존 |
 |---|---|---|
 | 9.5 Identity + IP polish | ✅ 완료 (2026-04-29, `duel-implementation.md` §9 Phase 9.5) | 없음 |
-| 10a 디스패처 인프라 | ⬜ | 없음 |
-| 10b 시간/공간 효과 | ⬜ | 10a |
+| 10a 디스패처 인프라 | ✅ 완료 (2026-04-29, §9 Phase 10a) | 없음 |
+| 10b 시간/공간 효과 | ✅ 완료 (2026-04-29, §9 Phase 10b) | 10a |
 | 9 Audio | ⬜ | **SFX 12개 도착** |
-| 11 Ranked Cloudflare multiplayer | ⬜ | 9.5, 10a |
+| 11a Cloudflare 권위 룸 + state broadcast + CORS | ✅ 완료 (2026-04-29, `worker/`, 30/30 tests) | 없음 |
+| 11b 클라 네트워크 어댑터 | ⬜ | 11a, (10a 디스패처 권장) |
+| 11c 퍼시스턴스 + 리더보드 | ⬜ | 11a |
 | 11.5 Sparks 파티클 | ⬜ | 10a |
 | 12 캐릭터 메시 통합 | ⬜ | **Quaternius + Mixamo 도착**, 9.5(rim 셰이더 패턴) |
 | 13 배포 | ⬜ | 11 |

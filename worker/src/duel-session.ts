@@ -244,6 +244,8 @@ export class DuelRoomSession {
         this.fighters.opponent = tickFighter(this.fighters.opponent, dtSeconds, FRICTION);
       }
 
+      this.broadcastState(now);
+
       const ringoutWinner = this.ringoutWinner();
       if (ringoutWinner) {
         this.endRound(ringoutWinner, "ringout", now);
@@ -254,6 +256,15 @@ export class DuelRoomSession {
         this.endRound("draw", "timeout", now);
       }
     }
+  }
+
+  private broadcastState(serverNow: number): void {
+    this.broadcast({
+      t: "state",
+      serverNow,
+      player: snapshotFighter(this.fighters.player),
+      opponent: snapshotFighter(this.fighters.opponent),
+    });
   }
 
   private broadcastImpact(attackerSide: DuelSide, at: number, outcome: Outcome): void {
@@ -422,6 +433,26 @@ interface ServerMatchState {
   playerWins: number;
   opponentWins: number;
   phaseEndsAt: number;
+}
+
+interface FighterNetState {
+  posX: number;
+  velX: number;
+  guard: GuardSnapshot;
+  stunUntil: number;
+  attackCooldownUntil: number;
+  counterUntil: number;
+}
+
+function snapshotFighter(fighter: FighterState): FighterNetState {
+  return {
+    posX: fighter.posX,
+    velX: fighter.velX,
+    guard: fighter.guard,
+    stunUntil: fighter.stunUntil,
+    attackCooldownUntil: fighter.attackCooldownUntil,
+    counterUntil: fighter.counterUntil,
+  };
 }
 
 function initialMatch(): ServerMatchState {

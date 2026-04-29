@@ -1,6 +1,6 @@
 # Chambara Duel — Implementation Reference
 
-> 마지막 업데이트: 2026-04-29 (Phase 9.5 — Identity + IP polish: `PLASMA_BLADE` 리네임 + 사이드별 블레이드 팔레트 + Fresnel rim + TitleScreen + HUD/KoSplash 이름 렌더)
+> 마지막 업데이트: 2026-04-29 (Phase 11a — Cloudflare worker 권위 룸 + ELO matchOver + 30Hz `state` broadcast + CORS)
 >
 > `docs/game-design.md`가 *컨셉/요구사항* 문서라면 본 문서는 *현재 빌드된 시스템*의 레퍼런스.
 > 파일 경로, 책임 분리, 룰 → 코드 매핑, 튜닝 노브, 미해결 항목 정리.
@@ -23,6 +23,17 @@ client/src/duel/        # 게임 클라이언트 (3D 렌더 + 입력 + 매치 �
   Duel.tsx              # 디폴트 라우트 `/`. Canvas + Bloom + GameStage + HUD + 카메라 셰이크
   Arena3D.tsx           # 발판 (페데스탈/내부 디스크/외곽 림/발광 페리미터) + 조명/하늘
   Water.tsx             # 스타일라이즈 워터 ShaderMaterial (Phase 8)
+
+worker/src/            # Cloudflare Worker + Durable Objects 권위 랭크 서버 (Phase 11a)
+  index.ts              # 라우터: /healthz, /leaderboard, /matchmake, /rooms/:id, OPTIONS preflight
+  http.ts               # json() + corsPreflight() — 응답에 CORS 헤더 강제 부착
+  bindings.ts           # Env 인터페이스 (RANKED_QUEUE, DUEL_ROOM)
+  protocol.ts           # MatchmakePlayer 타입 + parser
+  rating.ts             # ELO K=32 expectedScore / applyEloResult
+  ranked-queue.ts       # RankedQueue DO — in-memory ±200 매칭, 매치 성사 시 roomId 발급
+  duel-room.ts          # DuelRoom DO — WS upgrade + alarm 기반 30Hz tick 스케줄
+  duel-session.ts       # DuelRoomSession — hello/ready/guard/attack 핸들링 + 매치 상태머신 + state broadcast
+  test/*.test.js        # node:test 30/30 (rating · queue · room · http)
   Fighter.tsx           # 캐릭터 + 검 (phase-based 포즈) + drei `<Trail>` + 스턴 별
   ImpactRings.tsx       # outcome 발화 시 확장 링 풀 (Phase 8)
   useDuelLoop.ts        # 매치 상태머신, pendingAttack, 가드, 물리 tick, impactEvents 큐
@@ -268,11 +279,16 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 - [ ] **무기 종류** — 차지 검 / 쌍검 / Timely Block (현재 PLASMA_BLADE 1종)
 
 ### 멀티플레이 / 랭크 (Day 2)
-- [ ] **Cloudflare RankedQueue Durable Object** — 랭크 1v1 자동 매치메이킹. `playerId`/rating/name을 받아 ELO ±200 범위에서 매칭, 30초 이상 대기 시 범위 확장.
-- [ ] **Cloudflare DuelRoom Durable Object** — 방 하나 = DO 하나. `shared/src/combat/resolveAttack` + `applyOutcome`을 서버 권위로 호출하고 outcome/state를 WebSocket broadcast. 기존 `server/src/rooms/GameRoom.ts`는 비행기 스캐폴드라 참고만 한다.
-- [ ] **ELO / leaderboard** — 초기 1000, K=32. rating 원본은 Durable Object SQLite, Top 20 cache는 Workers KV 또는 DO SQLite query. 인증은 잼 이후, 이번에는 `localStorage["chambara.playerId"]` 기반.
-- [ ] **권위 서버 모델** — 클라는 입력/가드 snapshot만 송신, 서버가 cooldown/stun/motion gate와 impact 판정을 처리한다. 클라 예측은 visual-only.
-- [ ] **임팩트 시점 동기화** — 1차는 latest guard 판정, 여유 시 최근 200-300ms state history로 rollback 보정.
+- [x] **Cloudflare RankedQueue Durable Object** (Phase 11a) — `playerId`/rating/name을 받아 ±200 범위 in-memory 매칭, 매치 성사 시 `ranked-{a}-{b}` roomId 발급. **TODO**: 30s 대기 시 범위 확장, DO storage 영속화, Worker 재시작 후 큐 보존.
+- [x] **Cloudflare DuelRoom Durable Object** (Phase 11a) — WS upgrade, alarm 기반 30Hz tick. `DuelRoomSession`이 hello/ready/guard/attack 처리 + countdown→fighting→roundOver→matchOver 상태머신 + 서버 권위 `resolveAttack`/`applyOutcome` 호출. **TODO**: Hibernation API, room ID를 DO `state.id.name`으로 사용 (현재는 "duel-room" 하드코드).
+- [x] **권위 서버 모델** (Phase 11a) — 클라는 가드 스냅샷 + 공격 이벤트만 송신. 이동은 outcome-driven (`applyOutcome` velX → `tickFighter` 적분 → ringout). 클라 입력 메시지에 walk/move 없음.
+- [x] **`state` 30Hz broadcast** (Phase 11a) — fighting tick마다 `{ t: "state", serverNow, player, opponent }` 송신. 페이로드는 `{ posX, velX, guard, stunUntil, attackCooldownUntil, counterUntil }`. 클라가 상대 위치를 알 유일한 경로.
+- [x] **ELO matchOver payload** (Phase 11a) — K=32, matchOver 메시지에 `ratings: { player: { before, after, delta }, opponent: {...} }` 포함. **TODO**: rating 원본 영속화 (DO SQLite), `/leaderboard` Top 20 (현재 빈 배열 stub), `/me` 조회.
+- [x] **CORS** (Phase 11a) — `json()` 모든 응답에 `*` allow-origin + methods/headers, `OPTIONS` 프리플라이트 204.
+- [ ] **클라 네트워크 어댑터** — `useRankedMatch` 훅, WS 연결, `state` 인터폴레이션 버퍼, `impact` → `dispatchImpactFx`. **다음 작업**.
+- [ ] **`wrangler deploy` + 클라 env 분기** — Worker URL을 클라가 어떻게 받을지 (build-time env vs runtime config).
+- [ ] **인증 / playerId** — 잼 범위에선 `localStorage["chambara.playerId"]` UUID + `["chambara.name"]` 기반. 영속화는 DO SQLite.
+- [ ] **임팩트 시점 동기화** — 현재는 클라가 보낸 attack의 latest guard 판정. 여유 시 최근 200-300ms state history로 rollback 보정.
 - [ ] **사설방/토너먼트** — P1/P2. 랭크 1v1 완성 후 room code와 4/8/16인 bracket으로 확장.
 
 ### 배포 / 컴플라이언스
@@ -308,6 +324,7 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 | 6c | resolver cooldown 버그 수정 / 찌르기 모션 분리 / 플레이어 투명도 / 가드 chest 중심 복원 |
 | **7** | **Jam-prep balance + camera/visual sync**: (a) 카메라 정중앙 뒤+살짝 위, useFrame Z lerp 추격 (b) 검·가드 fighter group worldZ에 lock, raycast plane도 player Z로 이동 (c) `tradeImmune` 비주얼 플래그 — 투명화는 stun/iframe 시에만 해제 (d) `attackerFollowFraction` 1.0 + `FRICTION` 5.0 → 거리 보존 + 빠른 가감속 (e) `commitPending` motion gate — 이동 중 입력 거부 (f) 넉백 위계 재설정 (slice 8 / counter 10 / thrust 14) — slice<counter<thrust (g) thrust block에도 stun 적용 (h) `stunMs` 1500 + 피격 시 즉시 해제 (i) `counterWindowMs` / `thrustBlockStunMs` → `stunMs` 단일 변수로 통합 (j) 스턴 시 머리 위 노란 별 2개 시각 인디케이터 |
 | **8** | **Day 1 시각 P0 완료**: (a) `@react-three/postprocessing` 도입, Canvas에 `<EffectComposer><Bloom>` + ACESFilmic 톤매핑 (b) 검 emissive를 황색→시안(`#38bdf8`) 라이트세이버 톤으로 통일, intensity를 Bloom threshold 위로 상향(swing 3.4 피크) (c) drei `<Trail>` 검 끝 부착 — 0.22 width, 1.6s 길이, decay 3 (d) `ImpactEvent` 타입 + `impactEvents` ref를 `useDuelLoop`에 추가 (resolver outcome 발화시 push, miss/rejected 제외, 800ms prune), `ImpactRings` 컴포넌트가 outcome별 ring 렌더 (hit 노란빛 / pierce 핑크 / block 시안) + 카메라 셰이크 X·Y 오프셋 (e) `MatchState.lastRoundReason` 추가 — "ringout"일 때 `KoSplash` 132px headline + pop-in/settle/fade 애니메이션 (f) `Arena3D` 4-tier로 분리: 페데스탈 cylinder(`#8c7558`) → 내부 디스크(`#b59872`) → 외곽 림(`#4a3d2c`, RIM_LIFT=0.06) → 발광 페리미터 ring(`emissive #38bdf8`, `toneMapped: false`) (g) `Water.tsx` 신규 ShaderMaterial — 3-layer 변위(amp 0.06m) + 깊이 그라디언트 + 샤프 스파클(`pow(sp, 14)`) + 0.32m 쇼어라인 폼. 1차 시안에서 스파클 주파수 4.2(블롭)/쇼어 1.15m(과도) → 9.0/0.32m로 튜닝 |
+| **11a** | **Cloudflare 랭크 백엔드 — 권위 룸 + state broadcast + CORS** (`worker/`, 28→30 tests passing): (a) `worker/` 워크스페이스 신설 (`@vibejam/worker`, dependsOn `@vibejam/shared`). `wrangler.toml`에 `RANKED_QUEUE`/`DUEL_ROOM` DO 바인딩 + `new_sqlite_classes` 마이그레이션 선언 (b) `index.ts` 라우터 — `/healthz`, `/leaderboard`(현재 stub), `/matchmake` (RankedQueue DO로 forward), `/rooms/:id` (DuelRoom DO로 forward), `OPTIONS` (corsPreflight) (c) `RankedQueue` DO — `parseMatchmakePlayer`로 hello payload 검증, `Math.abs(rating - waiting.rating) <= 200`인 첫 후보와 매치, 없으면 큐에 enqueue + `{status: "queued", queueSize}` 응답. 매치 시 `roomId = ranked-{a}-{b}` 발급 (d) `DuelRoom` DO — WebSocketPair upgrade, `state.storage.setAlarm(now + 33ms)`로 30Hz tick 스케줄. 메시지 string만 허용, close/error 시 detach (e) `DuelRoomSession` — fighters 양쪽 메모리 보유, hello로 사이드 자동 할당(player→opponent→room_full), ready 둘 다면 countdown 진입, attack 수신 시 `resolveAttack`/`applyOutcome` 호출 후 `impact` broadcast, fighting tick에서 `tickFighter`로 velX 적분 + ringout/timeout 체크. 매치 종료 시 `applyEloResult` (K=32)로 ratings 계산해서 matchOver payload에 포함 (f) **`state` 30Hz broadcast 추가** — `tick()` fighting 분기에서 `tickFighter` 후 `broadcastState(now)` → `{ t: "state", serverNow, player: {posX, velX, guard, stunUntil, attackCooldownUntil, counterUntil}, opponent: {...} }`. 클라가 상대 위치를 알 유일한 경로 (이동 입력 채널 없음 — outcome-driven movement 모델) (g) **CORS** — `http.ts`의 `json()`이 모든 응답에 `Access-Control-Allow-Origin: *` + methods/headers 부착, `corsPreflight()` 헬퍼로 OPTIONS 204 응답 (h) 테스트 30/30 — rating 단위, RankedQueue 매칭/거절, DuelRoom 매치 라이프사이클(hello/ready/guard/attack/ringout/timeout/match_over), state broadcast 검증, CORS 헤더 검증 |
 | **9.5** | **Identity & IP polish** (Phase 9.5a~e — `docs/jam-polish-plan.md` §1, `claudedocs/research_character_weapon_customization_20260429.md`): (a) `BASIC_SWORD` → **`PLASMA_BLADE`** 리네임 (Lucasfilm 트레이드마크 회피, 코드 식별자만 — `swordRef`/`SwordPose` 등 내부 식별자 유지). 영향: `weapons.ts`, `useDuelLoop.ts`, `Duel.tsx`, `InputDemo.tsx`, `shared/src/combat/CLAUDE.md` (b) `Fighter`에 **`accentColor` prop** 추가, 단일 hex로부터 HSL slide로 4-stop 팔레트 (core/bright/dim/guard) derive. 모든 sword pose의 emissive를 팔레트 기준으로 분기. drei `<Trail>` color도 사이드별 (c) **Body/Head Fresnel rim 셰이더** — `MeshStandardMaterial.onBeforeCompile`로 outgoingLight에 `pow(1-dot(viewDir, normal), 2.6) * 1.6 * uRimColor` 추가. uniform mutation으로 Phase 9.5d 색 변경 시 셰이더 재컴파일 X (d) **player bodyColor 중립화** — `#3b82f6`/`#ef4444` → `#64748b` 양쪽 동일. 사이드 ID는 블레이드 emissive + rim에만 (research §3.3) (e) **`TitleScreen.tsx`** 신규 — 이름 입력(≤16자) + 5 세이버 색 프리셋(시안/그린/퍼플/마젠타/옐로우, 빨강 제외 IP §7.4) + `localStorage["chambara.name"]`/`["chambara.saber"]` 저장. `readStoredIdentity()` helper로 두 값 모두 있으면 타이틀 스킵, Duel.tsx top-level이 게이트 (f) **`DuelHud` props 확장** — `playerName/Accent`, `opponentName/Accent` 추가. TopBar 좌우 NameTag (`text-shadow: 0 0 8px {accent}`) + FlagDots 색을 사이드 accent 매칭. KoSplash subline `<player> knocked out <opponent>` 형식, accent 색도 사이드별. matchOver 화면에 winnerName 표시. **Opponent는 "AI Bot" 고정** (Phase 11 서버에서 실제 이름 송신 시 교체) (g) **넉백 -25% 튠** (사용자 피드백 "넉백이 너무 큼"): `sliceKnockback` 8.0→6.0, `counterKnockback` 10.0→7.5, `thrustKnockback` 14.0→10.5. 변위 1.6/2.0/2.8 → 1.2/1.5/2.1. thrust 1히트 KO 페이스 → 2-3히트, slice 5히트 → 6-7히트. Switch Sports 원작 페이스에 더 가까움. (h) **Thrust 히트 판정 버그 수정** (사용자 피드백 "thrust가 대부분 miss"): `mouseToAttackEvent`의 thrust event.origin이 마우스 위치 → segment가 body 실루엣 밖에서 시작해 더 멀리 뻗어 거의 항상 MISS였음. `event.origin = (0, SHOULDER_Y)` (chest, body box 내부)로 변경 + len=0 폴백 (forward-up). 비주얼은 이미 chest 기준이라 변경 불필요. AI의 `pickThrust`는 origin을 박스 외부에 두고 박스를 통과하도록 segment 구성하는 패턴이라 영향 없음. `InputDemo`의 동일 패턴도 함께 수정. |
 
 각 phase는 typecheck + build 통과 후 다음으로 진행. 브라우저 시각 검증은 `yarn dev:client` 후 직접 수행 필요.

@@ -15,7 +15,8 @@
 - **`client/src/duel/`** — **메인 게임 모듈** (R3F 렌더링 + 입력 + 매치 진행). 모듈 가이드: `client/src/duel/CLAUDE.md`
 - **`client/src/demo/`** — 초기 프로토타입 (`?demo=arena`, `?demo=sword`, `?demo=character`)
 - **`client/src/game/`** — 폐기된 비행기 스캐폴드 (R3F+Colyseus 인프라 검증용으로만 유지)
-- **`server/src/`** — 폐기된 비행기 Colyseus 스캐폴드. 듀얼 멀티는 Cloudflare Workers + Durable Objects로 새로 구현 예정 (`docs/ranked-multiplayer-cloudflare.md`)
+- **`server/src/`** — 폐기된 비행기 Colyseus 스캐폴드. 듀얼 멀티는 `worker/`로 이전.
+- **`worker/src/`** — Cloudflare Worker + Durable Objects 권위 랭크 백엔드 (Phase 11a). `RankedQueue` + `DuelRoom` DO, 30Hz `state` broadcast, ELO K=32 matchOver. 자세한 상태/프로토콜: `docs/ranked-multiplayer-cloudflare.md` §"구현 상태"
 
 ## 작업 시작 시 우선 읽어야 할 문서
 

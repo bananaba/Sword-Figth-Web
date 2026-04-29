@@ -95,3 +95,22 @@ test("unknown routes return 404 JSON", async () => {
   assert.equal(response.status, 404);
   assert.deepEqual(await response.json(), { error: "not_found" });
 });
+
+test("GET /healthz response carries permissive CORS headers", async () => {
+  const response = await worker.fetch(new Request("https://worker.test/healthz"), createEnv());
+
+  assert.equal(response.headers.get("access-control-allow-origin"), "*");
+  assert.equal(response.headers.get("access-control-allow-methods"), "GET, POST, OPTIONS");
+  assert.equal(response.headers.get("access-control-allow-headers"), "content-type");
+});
+
+test("OPTIONS preflight returns 204 with CORS headers", async () => {
+  const response = await worker.fetch(
+    new Request("https://worker.test/matchmake", { method: "OPTIONS" }),
+    createEnv(),
+  );
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-origin"), "*");
+  assert.equal(response.headers.get("access-control-max-age"), "86400");
+});

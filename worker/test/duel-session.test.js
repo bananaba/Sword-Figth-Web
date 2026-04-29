@@ -321,6 +321,59 @@ test("DuelRoomSession ends the match after two round wins", () => {
   assert.deepEqual(second.sent.at(-1), first.sent.at(-1));
 });
 
+test("DuelRoomSession broadcasts state every fighting tick", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  startFighting(session, first, second);
+
+  const before = first.sent.filter((m) => m.t === "state").length;
+
+  session.tick(8500, 1 / 30);
+
+  const states = first.sent.filter((m) => m.t === "state");
+  assert.equal(states.length, before + 1);
+  const latest = states.at(-1);
+  assert.equal(latest.serverNow, 8500);
+  assert.equal(latest.player.posX, -1.6);
+  assert.equal(latest.opponent.posX, 1.6);
+  assert.equal(latest.player.velX, 0);
+  assert.deepEqual(latest.player.guard, {
+    active: false,
+    grip: { x: 0, y: 1.15 },
+    tip: { x: 0, y: 1.15 },
+  });
+  assert.deepEqual(second.sent.at(-1), latest);
+});
+
+test("DuelRoomSession state reflects velocity after a knockback hit", () => {
+  const session = new DuelRoomSession("ranked-p1-p2");
+  const attacker = fakeSocket();
+  const defender = fakeSocket();
+  joinTwoPlayers(session, attacker, defender);
+  startFighting(session, attacker, defender);
+
+  session.handleMessage(
+    attacker,
+    JSON.stringify({
+      t: "attack",
+      kind: "thrust",
+      origin: { x: 0, y: 1.15 },
+      direction: { x: 0, y: 1 },
+      reach: 1.4,
+      now: 8100,
+    }),
+  );
+  session.tick(8133, 1 / 30);
+
+  const states = attacker.sent.filter((m) => m.t === "state");
+  const latest = states.at(-1);
+  assert.equal(latest.serverNow, 8133);
+  assert.ok(latest.opponent.velX > 0, "defender velX should be positive (pushed away) after thrust knockback");
+  assert.ok(latest.player.velX > 0, "attacker velX should also be positive (push-along)");
+});
+
 function joinTwoPlayers(session, first, second) {
   session.attach(first);
   session.handleMessage(

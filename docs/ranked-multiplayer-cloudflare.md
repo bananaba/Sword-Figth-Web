@@ -1,8 +1,30 @@
 # Ranked Multiplayer on Cloudflare
 
-> 작성: 2026-04-29
+> 작성: 2026-04-29 / 11a 구현 반영: 2026-04-29
 >
 > 목적: game jam 제출 목표에서 **무료 범위**로 가장 경쟁력 있는 1v1 랭크 멀티플레이 구조를 정한다.
+
+## 구현 상태 (2026-04-29 / Phase 11a)
+
+`worker/` 워크스페이스 기준. 30/30 tests passing.
+
+| 항목 | 상태 |
+|---|---|
+| Worker 라우터 (`/healthz`, `/leaderboard` stub, `/matchmake`, `/rooms/:id`, `OPTIONS`) | ✅ |
+| `RankedQueue` DO (in-memory ±200 매칭) | ✅ — 영속화 / 30s 범위 확장 미구현 |
+| `DuelRoom` DO (WS upgrade, alarm 30Hz tick) | ✅ — Hibernation API 미사용, room id "duel-room" 하드코드 |
+| `DuelRoomSession` 매치 상태머신 (waiting/countdown/fighting/roundOver/matchOver) | ✅ |
+| `resolveAttack` / `applyOutcome` 권위 호출 | ✅ |
+| ELO K=32 matchOver payload | ✅ — rating 영속화 / Top 20 leaderboard 미구현 |
+| 30Hz `state` broadcast (fighter posX/velX/guard/stun/cooldown) | ✅ |
+| CORS (`*` origin + OPTIONS preflight) | ✅ |
+| 클라 네트워크 어댑터 | ⬜ Phase 11b |
+| `wrangler deploy` | ⬜ Phase 11d |
+
+**메시지 셰이프 변경 — 이 문서 §"서버 권위 DuelRoom" 섹션과의 차이**:
+- 클라→서버에 `move` / 위치 입력 메시지 **없음** (이동은 outcome-driven이라 불필요)
+- 서버→클라 `state` payload는 `match` 필드 미포함 (phase는 `match_state` 이벤트로만 송신)
+- `hello` 응답에 `side: "player" | "opponent"`, `rating` 포함
 
 ## 결론
 

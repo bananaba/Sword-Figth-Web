@@ -1,5 +1,5 @@
 import type { Env } from "./bindings.js";
-import { json } from "./http.js";
+import { corsPreflight, json } from "./http.js";
 export { DuelRoom } from "./duel-room.js";
 export { RankedQueue } from "./ranked-queue.js";
 
@@ -9,6 +9,10 @@ const GLOBAL_QUEUE_NAME = "global";
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    if (request.method === "OPTIONS") {
+      return corsPreflight();
+    }
 
     if (request.method === "GET" && url.pathname === "/healthz") {
       return json({ ok: true, service: SERVICE_NAME });
