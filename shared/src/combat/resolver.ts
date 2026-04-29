@@ -3,7 +3,6 @@ import {
   add,
   scale,
   segmentIntersectsBox,
-  segmentsIntersect,
   sub,
 } from "./geometry.js";
 import type {
@@ -102,26 +101,14 @@ export function resolveAttack(
     };
   }
 
-  const guardCrossesPath = segmentsIntersect(
-    event.origin,
-    attackEnd,
-    defender.guard.grip,
-    defender.guard.tip,
-  );
-
-  if (!guardCrossesPath) {
-    return {
-      kind: "hit",
-      knockback: counterActive ? weapon.counterKnockback : weapon.sliceKnockback,
-      attackerStun: 0,
-      defenderCounterWindow: 0,
-    };
-  }
-
+  // Angle-only guard model: guard pose blocks based on perpendicularity to the
+  // incoming slice, regardless of where on the body the slice was aimed.
+  // Inclusive tolerance — exactly `guardAngleTolerance` away from perpendicular
+  // still counts as a block (avoids feeling unfairly tight at the edge).
   const guardDir = sub(defender.guard.tip, defender.guard.grip);
   const angle = acuteAngleBetween(event.direction, guardDir);
   const isPerpendicular =
-    Math.PI / 2 - angle < weapon.guardAngleTolerance;
+    Math.PI / 2 - angle <= weapon.guardAngleTolerance;
 
   if (isPerpendicular) {
     return {

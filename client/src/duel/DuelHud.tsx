@@ -6,6 +6,8 @@ interface DuelHudProps {
   /** Reactivity hook — pass a value that changes ~10 Hz so this re-renders. */
   tickKey: number;
   onResetMatch: () => void;
+  /** Optional "Back to Title" handler; when present, matchOver renders an extra button. */
+  onLeave?: () => void;
   /** Player display name (from `localStorage["chambara.name"]` via TitleScreen). */
   playerName: string;
   /** Player side identity color (their plasma blade hex). */
@@ -20,6 +22,7 @@ export function DuelHud({
   hud,
   tickKey,
   onResetMatch,
+  onLeave,
   playerName,
   playerAccent,
   opponentName,
@@ -43,6 +46,7 @@ export function DuelHud({
         match={match}
         phaseRemainingMs={s.phaseTimeRemainingMs}
         onResetMatch={onResetMatch}
+        onLeave={onLeave}
         playerName={playerName}
         playerAccent={playerAccent}
         opponentName={opponentName}
@@ -282,6 +286,7 @@ function PhaseOverlay({
   match,
   phaseRemainingMs,
   onResetMatch,
+  onLeave,
   playerName,
   playerAccent,
   opponentName,
@@ -290,6 +295,7 @@ function PhaseOverlay({
   match: MatchState;
   phaseRemainingMs: number;
   onResetMatch: () => void;
+  onLeave?: () => void;
   playerName: string;
   playerAccent: string;
   opponentName: string;
@@ -431,24 +437,45 @@ function PhaseOverlay({
         >
           best of 3
         </div>
-        <button
-          onClick={onResetMatch}
-          style={{
-            marginTop: 28,
-            padding: "12px 28px",
-            fontSize: 14,
-            fontWeight: 800,
-            letterSpacing: 2,
-            color: "#e2e8f0",
-            background: "rgba(2,6,23,0.6)",
-            border: "1px solid #475569",
-            borderRadius: 8,
-            cursor: "pointer",
-            textTransform: "uppercase",
-          }}
-        >
-          New Match
-        </button>
+        <div style={{ display: "flex", gap: 12, marginTop: 28 }}>
+          <button
+            onClick={onResetMatch}
+            style={{
+              padding: "12px 28px",
+              fontSize: 14,
+              fontWeight: 800,
+              letterSpacing: 2,
+              color: "#0b1424",
+              background: playerAccent,
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              textTransform: "uppercase",
+              boxShadow: `0 0 24px ${playerAccent}`,
+            }}
+          >
+            New Match
+          </button>
+          {onLeave && (
+            <button
+              onClick={onLeave}
+              style={{
+                padding: "12px 28px",
+                fontSize: 14,
+                fontWeight: 800,
+                letterSpacing: 2,
+                color: "#e2e8f0",
+                background: "rgba(2,6,23,0.6)",
+                border: "1px solid #475569",
+                borderRadius: 8,
+                cursor: "pointer",
+                textTransform: "uppercase",
+              }}
+            >
+              Back to Title
+            </button>
+          )}
+        </div>
         <style>{`
           @keyframes matchOverPopIn {
             0% { transform: scale(0.6); opacity: 0; }

@@ -198,7 +198,9 @@ export function Duel() {
       />
     );
   }
-  return <DuelGame identity={identity} />;
+  return (
+    <DuelGame identity={identity} onLeave={() => setIdentity(null)} />
+  );
 }
 
 
@@ -232,7 +234,13 @@ function FullScreenFlash() {
   );
 }
 
-function DuelGame({ identity }: { identity: Identity }) {
+function DuelGame({
+  identity,
+  onLeave,
+}: {
+  identity: Identity;
+  onLeave: () => void;
+}) {
   const duel = useDuelLoop({
     initialPlayerZ: PLAYER_Z,
     initialOpponentZ: OPPONENT_Z,
@@ -324,6 +332,7 @@ function DuelGame({ identity }: { identity: Identity }) {
         hud={duel.hud}
         tickKey={hudKey}
         onResetMatch={duel.resetMatch}
+        onLeave={onLeave}
         playerName={identity.name}
         playerAccent={identity.saberColor}
         opponentName="AI Bot"

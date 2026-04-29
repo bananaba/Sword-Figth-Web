@@ -15,9 +15,9 @@ import type { WeaponStats } from "./types.js";
  * need a switch on weapon identity.
  */
 export const PLASMA_BLADE: WeaponStats = {
-  sliceKnockback: 6.0,
-  thrustKnockback: 10.5,
-  counterKnockback: 7.5,
+  sliceKnockback: 4.5,
+  thrustKnockback: 8.0,
+  counterKnockback: 5.5,
   attackCooldownMs: 600,
   guardAngleTolerance: (30 * Math.PI) / 180,
   thrustReach: 1.4,
