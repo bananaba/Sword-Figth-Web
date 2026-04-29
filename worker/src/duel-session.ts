@@ -179,6 +179,34 @@ export class DuelRoomSession {
     const defenderSide = otherSide(attackerSide);
     const attacker = this.fighters[attackerSide];
     const defender = this.fighters[defenderSide];
+
+    // Telegraph the swing to BOTH sides immediately so the opponent sees a
+    // wind-up + arc (otherwise they'd only ever see the impact ring). Phase
+    // boundaries match the client's local-attack visual lifecycle.
+    const isSlice = message.event.kind === "slice";
+    const windUpMs = isSlice
+      ? DEFAULT_WEAPON.windUpMs
+      : DEFAULT_WEAPON.thrustChargeMs;
+    const inputAt = message.now;
+    const impactAt = inputAt + windUpMs;
+    const swingEndAt = impactAt + DEFAULT_WEAPON.swingDurationMs;
+    const cooldownEndAt = Math.max(
+      inputAt + DEFAULT_WEAPON.attackCooldownMs,
+      swingEndAt + 80,
+    );
+    this.broadcast({
+      t: "attack_telegraph",
+      side: attackerSide,
+      kind: message.event.kind,
+      origin: message.event.origin,
+      direction: message.event.direction,
+      reach: message.event.reach,
+      inputAt,
+      impactAt,
+      swingEndAt,
+      cooldownEndAt,
+    });
+
     const outcome = resolveAttack(
       attacker,
       defender,

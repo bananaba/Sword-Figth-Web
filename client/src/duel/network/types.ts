@@ -90,6 +90,18 @@ export type ServerMessage =
       at: number;
       outcome: Outcome;
     }
+  | {
+      t: "attack_telegraph";
+      side: DuelSide;
+      kind: AttackKind;
+      origin: Vec2;
+      direction: Vec2;
+      reach: number;
+      inputAt: number;
+      impactAt: number;
+      swingEndAt: number;
+      cooldownEndAt: number;
+    }
   | { t: "error"; error: string };
 
 export type ClientMessage =

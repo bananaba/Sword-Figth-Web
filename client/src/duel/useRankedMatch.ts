@@ -117,7 +117,7 @@ export interface UseRankedMatchResult extends UseDuelLoop {
 // Visual smoothing — fraction of the gap closed per frame at ~60fps. Higher
 // = snappier (more raw teleports), lower = smoother (more visual lag).
 // 0.32 hides 30Hz state quantization while keeping reactions feel fast.
-const POSITION_LERP = 0.32;
+const POSITION_LERP = 0.55;
 
 // Throttle outgoing guard updates to ~30Hz. The render loop ticks 60+Hz so
 // without this we'd flood the WS with redundant guard packets.
@@ -220,6 +220,10 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
   // resolved attack, so absence within ~RTT means the request never
   // reached fighting state (network drop or `not_fighting` error).
   const localPlayerAttackConfirmed = useRef<boolean>(false);
+  // Server-driven opponent swing visual. Populated when the server broadcasts
+  // an `attack_telegraph` for the *other* side; cleared after cooldownEndAt
+  // so we don't render a ghost swing.
+  const opponentAttack = useRef<AttackVisualState | null>(null);
 
   const hud = useRef<DuelHudState>({
     match: matchRef.current,
@@ -404,6 +408,26 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
               attackerIsPlayer,
             };
           }
+          break;
+        }
+        case "attack_telegraph": {
+          // Server tells us a swing started — render it on whichever side it
+          // came from. Our own side is already optimistically visualised, so
+          // skip the self-echo to avoid restarting the swing mid-flight.
+          if (msg.side === ourSide.current) break;
+          const dragEnd = {
+            x: msg.origin.x + msg.direction.x * msg.reach,
+            y: msg.origin.y + msg.direction.y * msg.reach,
+          };
+          opponentAttack.current = {
+            inputAt: msg.inputAt,
+            impactAt: msg.impactAt,
+            swingEndAt: msg.swingEndAt,
+            cooldownEndAt: msg.cooldownEndAt,
+            start: msg.origin,
+            end: dragEnd,
+            kind: msg.kind,
+          };
           break;
         }
         case "error":
@@ -622,8 +646,21 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
     // Position lerp toward latest server target. Visual posX is what the
     // camera follows; logical fighter mirror tracks the server snapshot.
     if (tp) {
-      playerVisual.current.worldZ = lerp(playerVisual.current.worldZ, tp.posX, POSITION_LERP);
-      playerVisual.current.guard = tp.guard;
+      // Client-side dead reckoning: between 30 Hz state snapshots, advance the
+      // server target with its own velocity so 60 Hz frames don't see a stale
+      // posX (which the previous frame's lerp already converged onto, leaving
+      // the visual stuttering when the next snapshot pops in).
+      tp.posX += tp.velX * dt;
+      playerVisual.current.worldZ = lerp(
+        playerVisual.current.worldZ,
+        tp.posX,
+        POSITION_LERP,
+      );
+      // NOTE: guard is intentionally NOT overwritten from the server snapshot.
+      // Local input is authoritative for the player's own visual; otherwise
+      // the round of "client presses RMB → server hasn't acked yet → snapshot
+      // arrives with guard=false → visual flickers off" makes guard feel
+      // broken right after a phase transition.
       playerVisual.current.stunned = haveServerClock && serverNow < tp.stunUntil;
       playerVisual.current.cooldown = haveServerClock && serverNow < tp.attackCooldownUntil;
       playerVisual.current.tradeImmune = false;
@@ -640,7 +677,12 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       };
     }
     if (to) {
-      opponentVisual.current.worldZ = lerp(opponentVisual.current.worldZ, to.posX, POSITION_LERP);
+      to.posX += to.velX * dt;
+      opponentVisual.current.worldZ = lerp(
+        opponentVisual.current.worldZ,
+        to.posX,
+        POSITION_LERP,
+      );
       opponentVisual.current.guard = to.guard;
       opponentVisual.current.bladeTipBladePlane = to.guard.active
         ? to.guard.tip
@@ -649,7 +691,12 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       opponentVisual.current.cooldown = haveServerClock && serverNow < to.attackCooldownUntil;
       opponentVisual.current.tradeImmune = false;
       opponentVisual.current.speed = Math.abs(to.velX);
-      opponentVisual.current.attack = null;
+      // Drive opponent attack visual from the latest telegraph the server
+      // broadcast — clear once its cooldown elapses so we don't render a
+      // ghost swing.
+      const oa = opponentAttack.current;
+      if (oa && now >= oa.cooldownEndAt) opponentAttack.current = null;
+      opponentVisual.current.attack = opponentAttack.current;
       opponentFighter.current = {
         posX: to.posX,
         velX: to.velX,
