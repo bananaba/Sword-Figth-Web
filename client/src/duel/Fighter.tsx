@@ -327,20 +327,30 @@ const GRIP_2D: Vec2 = { x: 0, y: SHOULDER_Y };
 const BLADE_LENGTH = 1.2;
 
 /**
- * Project an arbitrary tip point onto the GRIP_2D-centred circle of radius
- * BLADE_LENGTH. Keeps the rendered blade a constant length while letting the
- * caller drive the *direction* (mouse for idle, amplified arc for slice swing).
- * Falls back to a forward-up pose when the tip coincides with the grip.
+ * Build a fixed-length blade segment whose **tip exactly tracks the cursor**
+ * and whose extended grip line passes through the chest pivot. Geometrically:
+ *
+ *     direction = normalize(tip - chest)
+ *     grip      = tip - direction * BLADE_LENGTH
+ *
+ * The (grip → tip) line therefore always passes through chest, no matter how
+ * close or far the cursor is. When the cursor sits on the chest, fall back to
+ * a forward-up pose so we still render a 1.2-unit blade.
  */
-function tipAtFixedLength(tip: Vec2): Vec2 {
+function swordFromTip(tip: Vec2): { grip: Vec2; tip: Vec2 } {
   const dx = tip.x - GRIP_2D.x;
   const dy = tip.y - GRIP_2D.y;
   const len = Math.hypot(dx, dy);
-  if (len < 1e-5) return { x: GRIP_2D.x, y: GRIP_2D.y + BLADE_LENGTH };
-  const inv = BLADE_LENGTH / len;
+  if (len < 1e-5) {
+    return {
+      grip: { x: GRIP_2D.x, y: GRIP_2D.y - BLADE_LENGTH },
+      tip: { x: GRIP_2D.x, y: GRIP_2D.y + 1e-4 },
+    };
+  }
+  const inv = 1 / len;
   return {
-    x: GRIP_2D.x + dx * inv,
-    y: GRIP_2D.y + dy * inv,
+    grip: { x: tip.x - dx * inv * BLADE_LENGTH, y: tip.y - dy * inv * BLADE_LENGTH },
+    tip,
   };
 }
 
@@ -368,18 +378,18 @@ function currentSwordPose(
 ): SwordPose {
   const a = s.attack;
   if (a) {
-    // Slice keeps a fixed-length blade — the amplified arc only drives the
-    // swing direction, not the visual reach. Thrust is exempt because the
-    // blade visibly extends along the thrust path (reads as a stab).
+    // Slice/idle keep a constant-length blade with grip extended back through
+    // chest. Thrust is exempt — the blade visibly stretches forward to read
+    // as a stab.
     const fixLength = a.kind === "slice";
     if (now < a.impactAt) {
       const t = clamp01((now - a.inputAt) / Math.max(1, a.impactAt - a.inputAt));
       const eased = easeInQuad(t);
       const rawTip = lerpVec(s.bladeTipBladePlane, a.start, eased);
-      const tip = fixLength ? tipAtFixedLength(rawTip) : rawTip;
+      const seg = fixLength ? swordFromTip(rawTip) : { grip: GRIP_2D, tip: rawTip };
       return {
-        fromBladePlane: GRIP_2D,
-        toBladePlane: tip,
+        fromBladePlane: seg.grip,
+        toBladePlane: seg.tip,
         color: "#ffffff",
         emissive: palette.core,
         emissiveIntensity: 1.6,
@@ -388,10 +398,10 @@ function currentSwordPose(
     if (now < a.swingEndAt) {
       const t = clamp01((now - a.impactAt) / Math.max(1, a.swingEndAt - a.impactAt));
       const rawTip = lerpVec(a.start, a.end, t);
-      const tip = fixLength ? tipAtFixedLength(rawTip) : rawTip;
+      const seg = fixLength ? swordFromTip(rawTip) : { grip: GRIP_2D, tip: rawTip };
       return {
-        fromBladePlane: GRIP_2D,
-        toBladePlane: tip,
+        fromBladePlane: seg.grip,
+        toBladePlane: seg.tip,
         color: "#ffffff",
         emissive: palette.bright,
         emissiveIntensity: 3.4,
@@ -406,10 +416,10 @@ function currentSwordPose(
         ? s.guard.tip
         : s.bladeTipBladePlane;
       const rawTip = lerpVec(a.end, restingTip, eased);
-      const tip = fixLength ? tipAtFixedLength(rawTip) : rawTip;
+      const seg = fixLength ? swordFromTip(rawTip) : { grip: GRIP_2D, tip: rawTip };
       return {
-        fromBladePlane: GRIP_2D,
-        toBladePlane: tip,
+        fromBladePlane: seg.grip,
+        toBladePlane: seg.tip,
         color: "#ffffff",
         emissive: palette.dim,
         emissiveIntensity: 1.2,
@@ -427,9 +437,10 @@ function currentSwordPose(
     };
   }
 
+  const idleSeg = swordFromTip(s.bladeTipBladePlane);
   return {
-    fromBladePlane: GRIP_2D,
-    toBladePlane: tipAtFixedLength(s.bladeTipBladePlane),
+    fromBladePlane: idleSeg.grip,
+    toBladePlane: idleSeg.tip,
     color: "#ffffff",
     emissive: palette.core,
     emissiveIntensity: 1.4,
@@ -449,7 +460,7 @@ function lerpVec(a: Vec2, b: Vec2, t: number): Vec2 {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
-const SWORD_FORWARD_OFFSET = 1.6;
+export const SWORD_FORWARD_OFFSET = 1.6;
 
 function bladePlaneToLocal(point: Vec2, facing: number): THREE.Vector3 {
   return new THREE.Vector3(facing * point.x, point.y, SWORD_FORWARD_OFFSET);

@@ -10,7 +10,7 @@ import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import * as THREE from "three";
 import { PLASMA_BLADE, type Vec2 } from "@vibejam/shared";
 import { ARENA_RADIUS, Arena3D } from "./Arena3D";
-import { Fighter, SHOULDER_Y } from "./Fighter";
+import { Fighter, SHOULDER_Y, SWORD_FORWARD_OFFSET } from "./Fighter";
 import { ImpactRings } from "./ImpactRings";
 import { SparkParticles } from "./SparkParticles";
 import { useDuelLoop, type UseDuelLoop } from "./useDuelLoop";
@@ -81,8 +81,12 @@ function GameStage({
       );
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(ndc, camera);
+      // Raycast onto the *blade plane* — same world-Z as the rendered sword
+      // (player worldZ + SWORD_FORWARD_OFFSET). This way the cursor is the
+      // blade tip on screen instead of being offset back to chest depth.
       const playerZ = duel.playerVisual.current.worldZ;
-      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -playerZ);
+      const bladeZ = playerZ + SWORD_FORWARD_OFFSET;
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -bladeZ);
       const target = new THREE.Vector3();
       const hit = raycaster.ray.intersectPlane(plane, target);
       if (!hit) return { x: 0, y: SHOULDER_Y };
