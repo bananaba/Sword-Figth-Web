@@ -4,7 +4,7 @@
 
 **현 컨셉**: Nintendo Switch Sports의 *Chambara* 종목을 웹으로 포팅한 1v1 칼싸움 듀얼. 마우스로 검 각도를 직접 조작, **두 검이 직각에 가까울 때만 막힘**. 상세는 [`docs/game-design.md`](./docs/game-design.md).
 
-**플랫폼 / 입력**: PC 1차 타겟. 게임플레이는 **마우스 전용** — 키보드 없이도 풀 플레이 가능 (좌클릭 슬라이스, 휠클릭/Shift+클릭 찌르기, 우클릭 가드). 모바일(터치/자이로) 호환은 잼 마감 전 시간 남으면 추가하는 P2 폴리시.
+**플랫폼 / 입력**: PC 1차 타겟. 게임플레이는 **마우스 전용** — 키보드 없이도 풀 플레이 가능 (좌클릭 슬라이스, 휠클릭/더블 클릭 찌르기, 우클릭 가드). 모바일(터치/자이로) 호환은 잼 마감 전 시간 남으면 추가하는 P2 폴리시.
 
 - **클라이언트**: Vite + React + TypeScript + Three.js (React Three Fiber)
 - **서버**: Colyseus + TypeScript (Day 2에 사설방 + 랭크용 DuelRoom 추가 예정)
@@ -27,7 +27,7 @@ PC 개발은 `yarn dev:client` (HTTP). HTTPS는 `?demo=sword` 자이로 모드 �
 
 | URL | 내용 |
 | --- | --- |
-| `/` | **메인 듀얼** — vs AI Bo3, PC 마우스 컨트롤. (Phase 7 빌드) |
+| `/` | **메인 듀얼** — vs AI Bo3, PC 마우스 컨트롤. (Phase 8: Bloom + 라이트세이버 + 트레일 + 임팩트 링/셰이크 + KO splash + 워터 셰이더) |
 | `/?demo=arena` | Chambara 트레이닝 아레나 — 직각 블록 + 점수 + 슬라이더 (참고 보존) |
 | `/?demo=sword` | 검 각도 입력 프로토타입 (마우스/터치/자이로 — P2용 모바일 검증) |
 | `/?demo=character` | Three.js 휴먼 캐릭터 렌더링 검증 |

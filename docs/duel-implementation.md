@@ -1,11 +1,11 @@
 # Chambara Duel — Implementation Reference
 
-> 마지막 업데이트: 2026-04-29 (Phase 7 — jam-prep balance + visual sync)
+> 마지막 업데이트: 2026-04-29 (Phase 8 — Day 1 시각 P0 완료: Bloom + 라이트세이버 + 트레일 + 임팩트링/셰이크 + KO splash + 외곽 림 + 워터 셰이더)
 >
 > `docs/game-design.md`가 *컨셉/요구사항* 문서라면 본 문서는 *현재 빌드된 시스템*의 레퍼런스.
 > 파일 경로, 책임 분리, 룰 → 코드 매핑, 튜닝 노브, 미해결 항목 정리.
 >
-> **플랫폼 / 입력**: PC 1차, **마우스 전용** (키보드 미사용). 좌클릭 슬라이스 / 휠클릭+Shift 찌르기 / 우클릭 가드. 모바일 입력 코드(`useSwordInput.ts`의 자이로/터치)는 `?demo=sword`에서만 활성 — 메인 `/` 라우트는 PC 마우스 입력만. 모바일 호환은 P2 폴리시. (D키는 개발자 전용 debug panel 토글로 게임플레이 입력에 포함 안 됨.)
+> **플랫폼 / 입력**: PC 1차, **마우스 전용** (키보드 미사용). 좌클릭 슬라이스 / 휠클릭 또는 더블 클릭 찌르기 / 우클릭 가드. 모바일 입력 코드(`useSwordInput.ts`의 자이로/터치)는 `?demo=sword`에서만 활성 — 메인 `/` 라우트는 PC 마우스 입력만. 모바일 호환은 P2 폴리시. (D키는 개발자 전용 debug panel 토글로 게임플레이 입력에 포함 안 됨.)
 
 ---
 
@@ -20,13 +20,15 @@ shared/src/combat/      # 클라/서버 공유 — 결정론적 순수 로직 (�
   index.ts              # 배럴 익스포트 (`@vibejam/shared`로 노출)
 
 client/src/duel/        # 게임 클라이언트 (3D 렌더 + 입력 + 매치 진행)
-  Duel.tsx              # 디폴트 라우트 `/`. Canvas + GameStage + HUD + Debug 토글
-  Arena3D.tsx           # 원형 발판 + 물 + 조명/하늘
-  Fighter.tsx           # 캐릭터 + 검 (단일 segment, phase-based 포즈)
-  useDuelLoop.ts        # 매치 상태머신, pendingAttack, 가드 빌더, 물리 tick
+  Duel.tsx              # 디폴트 라우트 `/`. Canvas + Bloom + GameStage + HUD + 카메라 셰이크
+  Arena3D.tsx           # 발판 (페데스탈/내부 디스크/외곽 림/발광 페리미터) + 조명/하늘
+  Water.tsx             # 스타일라이즈 워터 ShaderMaterial (Phase 8)
+  Fighter.tsx           # 캐릭터 + 검 (phase-based 포즈) + drei `<Trail>` + 스턴 별
+  ImpactRings.tsx       # outcome 발화 시 확장 링 풀 (Phase 8)
+  useDuelLoop.ts        # 매치 상태머신, pendingAttack, 가드, 물리 tick, impactEvents 큐
   useMouseInput.ts      # drag-release 슬라이스 / dbl·middle 찌르기 / R-hold 가드
   ai.ts                 # 봇 의사결정 (가드 각도, 슬라이스/찌르기, smart-slice)
-  DuelHud.tsx           # 라운드 점수/타이머/카운트다운 오버레이/스턴 바
+  DuelHud.tsx           # 라운드 점수/타이머/카운트다운/KoSplash + 스턴 바
   DuelDebug.tsx         # D키 패널 — 16개 weapon stat 슬라이더 + 히트박스 와이어
   InputDemo.tsx         # 2D SVG로 resolver 검증 (?demo=duel-input)
 ```
@@ -250,14 +252,14 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 
 > 잼 마감 2026-05-01 13:37 UTC. Day 1 시각 P0 → Day 2 사설방·랭크·배포 순서. 상세는 `claudedocs/research_chambara_visuals_20260429.md` §7.
 
-### 시각 시그니처 (잼 P0)
-- [x] **카메라 앵글** — 캐릭터 바로 뒤+살짝 위 + Z lerp 추격 (Phase 7 완료)
-- [ ] **postprocessing + Bloom** — selective bloom (luminanceThreshold 1.0)으로 emissive HDR 검 발광
-- [ ] **검 emissive 라이트세이버 톤** — 시안 코어 + 화이트 글로우 (idle 0, guard 1.5+, swing 4.0)
-- [ ] **검 트레일** — drei `<Trail>` 또는 meshline. 마우스 스윙 가시화
-- [ ] **임팩트 링/셰이크** — `?demo=arena`의 BLOCK/HIT 링 메인 Duel로 포팅 + 카메라 셰이크
-- [ ] **KO splash + 콜로세움 외곽 링 분리** — 발판을 외곽/중앙 두 mesh로 분리. 낙하 시 RingGeometry 펄스
-- [ ] **Stylized water shader** — 단색 plane → 카툰 물 (thaslle/stylized-water 또는 직접)
+### 시각 시그니처 (잼 P0) — **Phase 8 완료**
+- [x] **카메라 앵글** — 캐릭터 바로 뒤+살짝 위 + Z lerp 추격 (Phase 7)
+- [x] **postprocessing + Bloom** — `@react-three/postprocessing` `<EffectComposer><Bloom luminanceThreshold=0.85, intensity=1.4, radius=0.7, mipmapBlur />` + ACESFilmic 톤매핑 (Phase 8)
+- [x] **검 emissive 라이트세이버 톤** — 시안 `#38bdf8` 코어 + 화이트 글로우. emissiveIntensity: idle 1.4 / guard 2.2 / windUp 1.6 / swing **3.4** / recovery 1.2 (Phase 8)
+- [x] **검 트레일** — drei `<Trail width=0.22 length=1.6 decay=3 attenuation=t²>`, 검 끝 invisible 마커에 부착 (Phase 8)
+- [x] **임팩트 링/셰이크** — `useDuelLoop`에 `impactEvents` 큐 추가, `ImpactRings` 컴포넌트가 outcome별 색상(hit `#fde68a` / pierce `#fda4af` / block `#bfdbfe`)으로 0.25→1.45 expand + 페이드, 520ms. 카메라 셰이크는 pierce 0.13 / hit 0.10 / block 0.05, 220ms t² 페이드 (Phase 8)
+- [x] **KO splash + 콜로세움 외곽 링 분리** — `MatchState.lastRoundReason: "ringout" | "timeout"`로 KO 분기. `KoSplash` 컴포넌트 132px "K.O.!" pop-in (180ms 0.5→1.1 → 셋틀). 아레나는 페데스탈/내부 디스크/외곽 림(`#4a3d2c`, RIM_LIFT=0.06) + 발광 페리미터 ring(`emissive #38bdf8` intensity 2.4)로 4-tier 분리 (Phase 8)
+- [x] **Stylized water shader** — `Water.tsx` ShaderMaterial. 버텍스: 3-layer sine 변위(amp 0.06m). 프래그먼트: 깊이 그라디언트 + 흐르는 밴드 + 샤프 스파클(`pow(sp, 14)`) + 얇은 쇼어라인 폼(0.32m, `#7dd3fc`). 96×96 plane 세그먼트 (Phase 8)
 
 ### 게임플레이
 - [ ] **AI 시드 RNG** — `Math.random` 대체. 랭크 리플레이/네트코드 결정론 필수
@@ -303,6 +305,7 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 | 6b | 공격 telegraph (windUp/swing/recovery) — pendingAttack 시스템 |
 | 6c | resolver cooldown 버그 수정 / 찌르기 모션 분리 / 플레이어 투명도 / 가드 chest 중심 복원 |
 | **7** | **Jam-prep balance + camera/visual sync**: (a) 카메라 정중앙 뒤+살짝 위, useFrame Z lerp 추격 (b) 검·가드 fighter group worldZ에 lock, raycast plane도 player Z로 이동 (c) `tradeImmune` 비주얼 플래그 — 투명화는 stun/iframe 시에만 해제 (d) `attackerFollowFraction` 1.0 + `FRICTION` 5.0 → 거리 보존 + 빠른 가감속 (e) `commitPending` motion gate — 이동 중 입력 거부 (f) 넉백 위계 재설정 (slice 8 / counter 10 / thrust 14) — slice<counter<thrust (g) thrust block에도 stun 적용 (h) `stunMs` 1500 + 피격 시 즉시 해제 (i) `counterWindowMs` / `thrustBlockStunMs` → `stunMs` 단일 변수로 통합 (j) 스턴 시 머리 위 노란 별 2개 시각 인디케이터 |
+| **8** | **Day 1 시각 P0 완료**: (a) `@react-three/postprocessing` 도입, Canvas에 `<EffectComposer><Bloom>` + ACESFilmic 톤매핑 (b) 검 emissive를 황색→시안(`#38bdf8`) 라이트세이버 톤으로 통일, intensity를 Bloom threshold 위로 상향(swing 3.4 피크) (c) drei `<Trail>` 검 끝 부착 — 0.22 width, 1.6s 길이, decay 3 (d) `ImpactEvent` 타입 + `impactEvents` ref를 `useDuelLoop`에 추가 (resolver outcome 발화시 push, miss/rejected 제외, 800ms prune), `ImpactRings` 컴포넌트가 outcome별 ring 렌더 (hit 노란빛 / pierce 핑크 / block 시안) + 카메라 셰이크 X·Y 오프셋 (e) `MatchState.lastRoundReason` 추가 — "ringout"일 때 `KoSplash` 132px headline + pop-in/settle/fade 애니메이션 (f) `Arena3D` 4-tier로 분리: 페데스탈 cylinder(`#8c7558`) → 내부 디스크(`#b59872`) → 외곽 림(`#4a3d2c`, RIM_LIFT=0.06) → 발광 페리미터 ring(`emissive #38bdf8`, `toneMapped: false`) (g) `Water.tsx` 신규 ShaderMaterial — 3-layer 변위(amp 0.06m) + 깊이 그라디언트 + 샤프 스파클(`pow(sp, 14)`) + 0.32m 쇼어라인 폼. 1차 시안에서 스파클 주파수 4.2(블롭)/쇼어 1.15m(과도) → 9.0/0.32m로 튜닝 |
 
 각 phase는 typecheck + build 통과 후 다음으로 진행. 브라우저 시각 검증은 `yarn dev:client` 후 직접 수행 필요.
 

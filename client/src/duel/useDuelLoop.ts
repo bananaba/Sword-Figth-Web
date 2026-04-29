@@ -45,6 +45,7 @@ const WINS_TO_TAKE_MATCH = 2;
 
 export type MatchPhase = "countdown" | "fighting" | "roundOver" | "matchOver";
 export type RoundWinner = "player" | "opponent" | "draw";
+export type RoundReason = "ringout" | "timeout" | null;
 
 export interface MatchState {
   phase: MatchPhase;
@@ -53,6 +54,8 @@ export interface MatchState {
   playerWins: number;
   opponentWins: number;
   lastRoundWinner: RoundWinner | null;
+  /** How the previous round ended — drives KO splash vs. timeout copy in HUD. */
+  lastRoundReason: RoundReason;
   matchWinner: "player" | "opponent" | null;
 }
 
@@ -69,6 +72,20 @@ export interface DuelHudState {
   lastOutcome: { kind: Outcome["kind"]; at: number; attackerIsPlayer: boolean } | null;
 }
 
+/**
+ * Visual impact event — appended to a ring buffer when the resolver fires a
+ * non-rejected outcome. Rendering layer (`ImpactRings`) and camera-shake
+ * driver consume these by id.
+ */
+export interface ImpactEvent {
+  id: number;
+  kind: Outcome["kind"];
+  attackerIsPlayer: boolean;
+  worldZ: number;
+  worldY: number;
+  at: number;
+}
+
 export interface UseDuelLoopOptions {
   initialPlayerZ: number;
   initialOpponentZ: number;
@@ -80,6 +97,8 @@ export interface UseDuelLoop {
   playerVisual: React.MutableRefObject<FighterVisualState>;
   opponentVisual: React.MutableRefObject<FighterVisualState>;
   hud: React.MutableRefObject<DuelHudState>;
+  /** Ring buffer of recent impacts (rendering + camera shake). Pruned each tick. */
+  impactEvents: React.MutableRefObject<ImpactEvent[]>;
   /** Live weapon stats — read by handlers each attack. Mutate via `updateWeapon`. */
   weapon: React.MutableRefObject<WeaponStats>;
   /** Patch weapon stats (e.g. tuning sliders). */
@@ -186,6 +205,7 @@ function initialMatch(now: number): MatchState {
     playerWins: 0,
     opponentWins: 0,
     lastRoundWinner: null,
+    lastRoundReason: null,
     matchWinner: null,
   };
 }
@@ -224,6 +244,8 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const weaponRef = useRef<WeaponStats>({ ...BASIC_SWORD, ...(opts.initialWeapon ?? {}) });
   const pendingPlayerAttack = useRef<PendingAttack | null>(null);
   const pendingOpponentAttack = useRef<PendingAttack | null>(null);
+  const impactEvents = useRef<ImpactEvent[]>([]);
+  const nextImpactId = useRef<number>(0);
 
   const updateWeapon = useCallback((patch: Partial<WeaponStats>) => {
     weaponRef.current = { ...weaponRef.current, ...patch };
@@ -383,6 +405,16 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     defenderRef.current = next.defender;
     pending.resolved = true;
     hud.current.lastOutcome = { kind: outcome.kind, at: now, attackerIsPlayer };
+    if (outcome.kind !== "rejected" && outcome.kind !== "miss") {
+      impactEvents.current.push({
+        id: nextImpactId.current++,
+        kind: outcome.kind,
+        attackerIsPlayer,
+        worldZ: defenderRef.current.posX,
+        worldY: SHOULDER_Y,
+        at: now,
+      });
+    }
   };
 
   const setPlayerGuard = useCallback((active: boolean, pointer: Vec2) => {
@@ -433,6 +465,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     matchRef.current = initialMatch(performance.now());
     resetForNextRound();
     hud.current.lastOutcome = null;
+    impactEvents.current = [];
   }, [resetForNextRound]);
 
   const tick = useCallback(
@@ -452,15 +485,23 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
           const playerOut = Math.abs(playerStateRef.current.posX) > opts.arenaRadius;
           const oppOut = Math.abs(opponentStateRef.current.posX) > opts.arenaRadius;
           let winner: RoundWinner | null = null;
-          if (playerOut && oppOut) winner = "draw";
-          else if (oppOut) winner = "player";
-          else if (playerOut) winner = "opponent";
-          else if (phaseElapsed >= ROUND_DURATION_MS) {
+          let reason: RoundReason = null;
+          if (playerOut && oppOut) {
+            winner = "draw";
+            reason = "ringout";
+          } else if (oppOut) {
+            winner = "player";
+            reason = "ringout";
+          } else if (playerOut) {
+            winner = "opponent";
+            reason = "ringout";
+          } else if (phaseElapsed >= ROUND_DURATION_MS) {
             // Time-out: closer-to-center wins, tie if equal-ish
             const d1 = Math.abs(playerStateRef.current.posX);
             const d2 = Math.abs(opponentStateRef.current.posX);
             if (Math.abs(d1 - d2) < 0.05) winner = "draw";
             else winner = d1 < d2 ? "player" : "opponent";
+            reason = "timeout";
           }
           if (winner) {
             const playerWins = match.playerWins + (winner === "player" ? 1 : 0);
@@ -470,6 +511,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
               phase: "roundOver",
               phaseStartedAt: now,
               lastRoundWinner: winner,
+              lastRoundReason: reason,
               playerWins,
               opponentWins,
             };
@@ -576,6 +618,12 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       hud.current.opponentStunMs = Math.max(0, o.stunUntil - now);
       hud.current.playerWorldZ = p.posX;
       hud.current.opponentWorldZ = o.posX;
+
+      // Prune stale impact events (keep ~700ms ring lifetime headroom).
+      if (impactEvents.current.length > 0) {
+        const cutoff = now - 800;
+        impactEvents.current = impactEvents.current.filter((e) => e.at >= cutoff);
+      }
     },
     [opts.arenaRadius, resetForNextRound],
   );
@@ -584,6 +632,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     playerVisual,
     opponentVisual,
     hud,
+    impactEvents,
     weapon: weaponRef,
     updateWeapon,
     tick,

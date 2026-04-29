@@ -25,10 +25,9 @@
 
 ## 현재 상태 (2026-04-29)
 
-- Phase 7 완료: 카메라 추격, 검·가드 캐릭터 동기화, 스턴 시스템 통합, 라이트세이버 테마 결정
-- **다음 작업**: Step 1 = postprocessing + Bloom 도입 (`@react-three/postprocessing`)
-- **Day 1 잔여 시각 P0**: Bloom → 검 emissive HDR → 트레일 → 임팩트 링/셰이크 → KO splash → 물 셰이더
-- **Day 2 작업**: Colyseus DuelRoom (**사설방 2/4/8/16인 자동 토너먼트 브래킷 포함**) → 랭크/MMR (1대1 자동 매치) → Vercel 배포
+- **Phase 8 완료 — Day 1 시각 P0 모두 완료**: Bloom + ACES 톤매핑, 검 라이트세이버 emissive(시안 코어), drei Trail, ImpactRings + 카메라 셰이크, KO splash(ringout 분기), 외곽 림 + 발광 페리미터, `Water.tsx` ShaderMaterial
+- **다음 작업**: Step 7 = Colyseus DuelRoom 리팩토링 (사설방 2/4/8/16인 자동 토너먼트 브래킷)
+- **Day 2 작업**: DuelRoom → 랭크/MMR (1대1 자동 매치메이킹) → Vercel 배포 + 컴플라이언스
 
 ## 코드 작성 규칙
 

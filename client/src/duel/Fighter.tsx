@@ -1,5 +1,6 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
+import { Trail } from "@react-three/drei";
 import * as THREE from "three";
 import type { AttackKind, GuardSnapshot, Vec2 } from "@vibejam/shared";
 
@@ -204,6 +205,17 @@ export function Fighter({ state }: FighterProps) {
           <boxGeometry args={[0.05, 1.0, 0.05]} />
           <primitive object={swordMaterial} attach="material" />
         </mesh>
+        <Trail
+          width={0.22}
+          length={1.6}
+          color={new THREE.Color("#7dd3fc")}
+          attenuation={(t) => t * t}
+          decay={3}
+        >
+          <mesh position={[0, 0.5, 0]} visible={false}>
+            <sphereGeometry args={[0.01, 4, 4]} />
+          </mesh>
+        </Trail>
       </group>
     </group>
   );
@@ -238,9 +250,9 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
       return {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
-        color: "#fbbf24",
-        emissive: "#b45309",
-        emissiveIntensity: 0.85,
+        color: "#dbeafe",
+        emissive: "#38bdf8",
+        emissiveIntensity: 1.6,
       };
     }
     if (now < a.swingEndAt) {
@@ -249,9 +261,9 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
       return {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
-        color: "#fde68a",
-        emissive: "#fef08a",
-        emissiveIntensity: 1.4,
+        color: "#ffffff",
+        emissive: "#7dd3fc",
+        emissiveIntensity: 3.4,
       };
     }
     if (now < a.cooldownEndAt) {
@@ -266,9 +278,9 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
       return {
         fromBladePlane: GRIP_2D,
         toBladePlane: tip,
-        color: "#cbd5e1",
-        emissive: "#000000",
-        emissiveIntensity: 0,
+        color: "#dbeafe",
+        emissive: "#0ea5e9",
+        emissiveIntensity: 1.2,
       };
     }
   }
@@ -277,18 +289,18 @@ function currentSwordPose(s: FighterVisualState, now: number): SwordPose {
     return {
       fromBladePlane: s.guard.grip,
       toBladePlane: s.guard.tip,
-      color: "#60a5fa",
-      emissive: "#1d4ed8",
-      emissiveIntensity: 0.6,
+      color: "#dbeafe",
+      emissive: "#3b82f6",
+      emissiveIntensity: 2.2,
     };
   }
 
   return {
     fromBladePlane: GRIP_2D,
     toBladePlane: s.bladeTipBladePlane,
-    color: "#e5e7eb",
-    emissive: "#000000",
-    emissiveIntensity: 0,
+    color: "#e0f2fe",
+    emissive: "#38bdf8",
+    emissiveIntensity: 1.4,
   };
 }
 

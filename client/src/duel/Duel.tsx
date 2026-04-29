@@ -1,9 +1,11 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import * as THREE from "three";
 import { BASIC_SWORD, type Vec2 } from "@vibejam/shared";
 import { ARENA_RADIUS, Arena3D } from "./Arena3D";
 import { Fighter, SHOULDER_Y } from "./Fighter";
+import { ImpactRings } from "./ImpactRings";
 import { useDuelLoop, type UseDuelLoop } from "./useDuelLoop";
 import { useMouseInput } from "./useMouseInput";
 import { DEFAULT_AI, initialAiState, tickAi, type AiState } from "./ai";
@@ -18,6 +20,7 @@ import {
 
 const PLAYER_Z = -1.6;
 const OPPONENT_Z = +1.6;
+const SHAKE_LIFE_MS = 220;
 
 function GameStage({ duel, debug }: { duel: UseDuelLoop; debug: boolean }) {
   const { camera } = useThree();
@@ -80,6 +83,20 @@ function GameStage({ duel, debug }: { duel: UseDuelLoop; debug: boolean }) {
     const playerZ = duel.playerVisual.current.worldZ;
     const targetCamZ = playerZ - 1.6;
     camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, 0.22);
+
+    // Camera shake — driven by recent impact events.
+    let shake = 0;
+    for (const e of duel.impactEvents.current) {
+      const dtMs = now - e.at;
+      if (dtMs < 0 || dtMs > SHAKE_LIFE_MS) continue;
+      const power =
+        e.kind === "pierce" ? 0.13 : e.kind === "hit" ? 0.10 : e.kind === "block" ? 0.05 : 0;
+      const fade = 1 - dtMs / SHAKE_LIFE_MS;
+      const intensity = power * fade * fade;
+      if (intensity > shake) shake = intensity;
+    }
+    camera.position.x = (Math.random() - 0.5) * shake;
+    camera.position.y = 2.05 + (Math.random() - 0.5) * shake;
     camera.lookAt(0, 1.1, camera.position.z + 3.7);
   });
 
@@ -87,6 +104,7 @@ function GameStage({ duel, debug }: { duel: UseDuelLoop; debug: boolean }) {
     <>
       <Fighter state={duel.playerVisual} />
       <Fighter state={duel.opponentVisual} />
+      <ImpactRings eventsRef={duel.impactEvents} />
       {debug && <DuelDebugScene player={duel.playerVisual} opponent={duel.opponentVisual} />}
     </>
   );
@@ -144,9 +162,19 @@ export function Duel() {
       <Canvas
         shadows
         camera={{ ...cameraInit, fov: 52, near: 0.1, far: 100 }}
+        gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
       >
         <Arena3D />
         <GameStage duel={duel} debug={debug} />
+        <EffectComposer multisampling={0}>
+          <Bloom
+            mipmapBlur
+            luminanceThreshold={0.85}
+            luminanceSmoothing={0.2}
+            intensity={1.4}
+            radius={0.7}
+          />
+        </EffectComposer>
       </Canvas>
 
       <DuelHud hud={duel.hud} tickKey={hudKey} onResetMatch={duel.resetMatch} />

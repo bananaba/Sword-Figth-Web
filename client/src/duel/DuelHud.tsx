@@ -122,6 +122,15 @@ function PhaseOverlay({
   }
   if (match.phase === "roundOver") {
     const winner = match.lastRoundWinner;
+    if (match.lastRoundReason === "ringout") {
+      return (
+        <KoSplash
+          winner={winner}
+          phaseStartedAt={match.phaseStartedAt}
+          roundNumber={match.roundNumber}
+        />
+      );
+    }
     return (
       <Overlay>
         <div style={{ fontSize: 24, opacity: 0.8, marginBottom: 8 }}>
@@ -185,6 +194,89 @@ function PhaseOverlay({
     );
   }
   return null;
+}
+
+function KoSplash({
+  winner,
+  phaseStartedAt,
+  roundNumber,
+}: {
+  winner: import("./useDuelLoop").RoundWinner | null;
+  phaseStartedAt: number;
+  roundNumber: number;
+}) {
+  const age = performance.now() - phaseStartedAt;
+  // Pop-in (0–180ms): scale 0.5→1.1; settle (180–360ms): scale 1.1→1.0; hold; fade out at end.
+  let scale = 0.5;
+  let textOpacity = 0;
+  if (age < 180) {
+    const t = age / 180;
+    scale = 0.5 + (1.1 - 0.5) * easeOut(t);
+    textOpacity = t;
+  } else if (age < 360) {
+    const t = (age - 180) / 180;
+    scale = 1.1 - 0.1 * t;
+    textOpacity = 1;
+  } else {
+    scale = 1.0;
+    textOpacity = 1;
+  }
+  const fadeOut = age > 1800 ? Math.max(0, 1 - (age - 1800) / 380) : 1;
+  textOpacity *= fadeOut;
+
+  const isDraw = winner === "draw" || winner === null;
+  const headline = isDraw ? "DOUBLE K.O." : "K.O.!";
+  const subline = isDraw
+    ? "Both fighters out"
+    : winner === "player"
+    ? "You knocked them out"
+    : "You were knocked out";
+  const accent = isDraw
+    ? "#f1f5f9"
+    : winner === "player"
+    ? "#7dd3fc"
+    : "#fca5a5";
+
+  return (
+    <Overlay>
+      <div style={{ fontSize: 18, opacity: 0.7 * fadeOut, letterSpacing: 4 }}>
+        ROUND {roundNumber}
+      </div>
+      <div
+        style={{
+          marginTop: 6,
+          fontSize: 132,
+          fontWeight: 900,
+          letterSpacing: 6,
+          lineHeight: 1,
+          color: accent,
+          textShadow: `0 0 28px ${accent}, 0 0 56px ${accent}`,
+          transform: `scale(${scale})`,
+          opacity: textOpacity,
+          fontFamily: "ui-monospace, monospace",
+        }}
+      >
+        {headline}
+      </div>
+      <div
+        style={{
+          marginTop: 18,
+          fontSize: 22,
+          fontWeight: 600,
+          color: "#e2e8f0",
+          opacity: 0.85 * fadeOut,
+          letterSpacing: 1,
+        }}
+      >
+        {subline}
+      </div>
+    </Overlay>
+  );
+}
+
+function easeOut(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return 1 - (1 - x) * (1 - x);
 }
 
 function Overlay({ children }: { children: React.ReactNode }) {
