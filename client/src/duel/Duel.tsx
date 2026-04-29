@@ -190,7 +190,7 @@ export function Duel() {
       />
     );
   }
-  if (identity.mode === "ranked" || identity.mode === "private" || identity.mode === "tournament") {
+  if (identity.mode === "ranked" || identity.mode === "private") {
     return (
       <RankedDuelGame
         identity={identity}
@@ -450,9 +450,6 @@ function directRoomIdForIdentity(identity: Identity): string | undefined {
   if (identity.mode === "private" && identity.roomCode) {
     return `private-${identity.roomCode}`;
   }
-  if (identity.mode === "tournament" && identity.roomCode) {
-    return `tournament-${identity.roomCode}`;
-  }
   return undefined;
 }
 
@@ -484,7 +481,7 @@ function RankedOverlay({
       subtitle =
         mode === "ranked"
           ? "connecting to ranked queue…"
-          : `${mode === "tournament" ? "tournament match" : "private room"} ${roomCode ?? ""}`;
+          : `private room ${roomCode ?? ""}`;
       break;
     case "queued":
       title = "IN QUEUE";

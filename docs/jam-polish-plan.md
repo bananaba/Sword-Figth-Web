@@ -88,13 +88,13 @@
 | **11c** | **퍼시스턴스 + 리더보드** | ✅ 완료 | `Leaderboard` DO (`worker/src/leaderboard.ts`) — `storage.put/get/list` 기반 (KV 인터페이스, SQLite-backed via `new_sqlite_classes`). `playerId → {name, rating, wins, losses, draws, updatedAt}`. matchOver → DuelRoomSession `onMatchOver` 콜백 → DuelRoom이 fire-and-forget으로 internal POST /result 송신. 클라 `/leaderboard` Top 20 + `/me` 라우팅, `LeaderboardView` 컴포넌트 (TitleScreen에 "View Leaderboard" 진입). 30 → 42 worker tests |
 | **11d** | **배포** | ⬜ | `wrangler deploy` + 클라 env 분기 (Worker URL) — Phase 13에서 |
 
-### Phase 11e — Private rooms + tournament match rooms (~1h, 에셋 0 의존)
+### Phase 11e — Private rooms (~1h, 에셋 0 의존)
 
 | # | 작업 | 상태 |
 |---|---|---|
 | 40 | Private Room code 입력/생성 → `/rooms/private-{code}` 직접 WS 연결 | ✅ |
-| 41 | 4-player Tournament helper — `{code}-SF-A`, `{code}-SF-B`, `{code}-FINAL` 매치룸 선택 | ✅ |
-| 42 | 사설/토너먼트 결과가 랭크 리더보드와 local rating에 반영되지 않도록 `record=0` 처리 | ✅ |
+| 41 | 사설방 결과가 랭크 리더보드와 local rating에 반영되지 않도록 `record=0` 처리 | ✅ |
+| 42 | Tournament UI 비활성화 | ✅ |
 | 43 | 자동 브래킷 상태/승자 집계 Durable Object | ⬜ P2 |
 
 ### Phase 11.5 — Sparks 파티클 (~2h, 에셋 0 의존)
@@ -216,7 +216,7 @@
 | 11c 퍼시스턴스 + 리더보드 | ✅ 완료 (2026-04-29, §9 Phase 11c) | 11a |
 | 11.5 Sparks 파티클 | ✅ 완료 (2026-04-29, §9 Phase 11.5) | 10a |
 | **11.6 Audit pass + 신뢰성 패치** | **✅ 완료 (2026-04-29, §9 Phase 11.6, 12 patches, 46/46 tests)** | **11a–c, 11.5** |
-| 11e Private rooms + tournament match rooms | ✅ 완료 (2026-04-29, 49/49 worker tests) | 11b |
+| 11e Private rooms | ✅ 완료 (2026-04-29, 49/49 worker tests) | 11b |
 | 12 캐릭터 메시 통합 | ⬜ | **Quaternius + Mixamo 도착**, 9.5(rim 셰이더 패턴) |
 | 13 배포 | ⬜ | 11.6 |
 

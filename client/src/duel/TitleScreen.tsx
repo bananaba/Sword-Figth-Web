@@ -30,7 +30,7 @@ const MAX_NAME_LEN = 16;
 const DEFAULT_NAME = "Duelist";
 const DEFAULT_SABER = "#38bdf8";
 
-export type DuelMode = "solo" | "ranked" | "private" | "tournament";
+export type DuelMode = "solo" | "ranked" | "private";
 
 export interface Identity {
   name: string;
@@ -80,10 +80,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
     return DEFAULT_SABER;
   });
   const [roomCode, setRoomCode] = useState("");
-  const [tournamentCode, setTournamentCode] = useState("");
-  const [tournamentMatch, setTournamentMatch] = useState("SF-A");
   const [generatedPrivateCode] = useState(makeRoomCode);
-  const [generatedTournamentCode] = useState(makeRoomCode);
 
   const handleStart = (mode: DuelMode, code?: string): void => {
     const trimmed = name.trim().slice(0, MAX_NAME_LEN);
@@ -98,7 +95,6 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
   };
 
   const normalizedPrivateCode = normalizeRoomCode(roomCode);
-  const normalizedTournamentCode = normalizeRoomCode(tournamentCode);
 
   return (
     <div
@@ -297,39 +293,17 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
           </button>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ fontSize: 12, color: "#94a3b8", letterSpacing: 1 }}>
-            4-PLAYER TOURNAMENT
-          </span>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10 }}>
-            <input
-              type="text"
-              value={tournamentCode}
-              maxLength={12}
-              placeholder={generatedTournamentCode}
-              onChange={(e) => setTournamentCode(e.target.value.toUpperCase())}
-              style={inputStyle(saberColor)}
-            />
-            <select
-              value={tournamentMatch}
-              onChange={(e) => setTournamentMatch(e.target.value)}
-              style={inputStyle(saberColor)}
-            >
-              <option value="SF-A">Semi A</option>
-              <option value="SF-B">Semi B</option>
-              <option value="FINAL">Final</option>
-            </select>
-          </div>
-          <button
-            onClick={() => {
-              const code = normalizedTournamentCode || generatedTournamentCode;
-              handleStart("tournament", `${code}-${tournamentMatch}`);
-            }}
-            style={secondaryButtonStyle(saberColor)}
-          >
-            Open Tournament Match
-          </button>
-        </div>
+        <button
+          disabled
+          title="Tournament brackets are disabled until automatic winner tracking ships."
+          style={{
+            ...secondaryButtonStyle("#475569"),
+            cursor: "not-allowed",
+            opacity: 0.45,
+          }}
+        >
+          Tournament Coming Soon
+        </button>
       </div>
 
       {onShowLeaderboard && (
