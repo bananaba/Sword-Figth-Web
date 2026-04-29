@@ -134,12 +134,13 @@ line_angle = min(diff_rad, π − diff_rad)            // [0, π/2]
 ## 6. 미결정 (다음 단계)
 
 ### 게임 디자인
-- [ ] **테마 / 톤**: 사무라이 원작 / SF 라이트세이버 / 메타 풍자 / 추상 미니멀 — 미정
+- [x] **테마 / 톤**: **SF 라이트세이버** (2026-04-29 결정). 검 글로우는 시안 코어 + 화이트 HDR, Bloom selective로 발광. 의상 디테일 부담 최소화 + 잼 30초 룰에 즉시 어필.
 - [ ] **캐릭터 소스**: Soldier 재활용 / Quaternius 로우폴리 / **Tripo3D** 사전 풀
 - [ ] **스테이지**: 평지 / 좁은 발판 + 물 (원작) / 회전판 / 컨베이어
 - [ ] **승패 조건**: HP 시스템 / 발판 밖 낙하 / 베스트 오브 N / 시간 제한
 - [ ] **공격 시스템**: 가드 매칭만 / 차지 어택(가드 무력화) / 페이크 추가
 - [ ] **공격 각도 풀**: 현재 7종, 적정성 검증 필요
+- [x] **카메라 앵글**: 캐릭터 바로 뒤 (X=0 중앙) + 살짝 위에서 내려다보는 3rd-person — Switch Sports 챔버라 예시 이미지 매칭. 시야 확보는 player `transparentWhenIdle` (32% opacity)으로 해결.
 
 ### 튜닝 (`?demo=arena` 슬라이더로 결정)
 - [ ] **Tolerance**: 현재 25°, 베타 25-35°
@@ -147,16 +148,36 @@ line_angle = min(diff_rad, π − diff_rad)            // [0, π/2]
 - [ ] **Idle**: 현재 1500ms
 
 ### 멀티플레이
-- [ ] AI 봇 (단독 플레이)
-- [ ] Colyseus 1v1 매치메이킹 (이미 서버 인프라 있음, GameRoom 변형)
-- [ ] 토너먼트 (8/16강 자동 브래킷)
+- [x] AI 봇 (단독 플레이) — 메인 모드로 구현
+- [ ] **사설방 (Day 1 종료 후)**: Colyseus DuelRoom — shared resolver 권위 서버
+- [ ] **랭크 / MMR (Day 2)**: 단순 ELO + 점수 ±200 매치메이킹 큐
+- [ ] 토너먼트 (8/16강 자동 브래킷) — post-jam
 - [ ] 임팩트 시점 동기화 (네트워크 지연 보상)
 
 ### 컴플라이언스 / 마무리
-- [ ] vibej.am 위젯 동작 확인 (현재 index.html 에 삽입)
-- [ ] 모바일 빌드 사이즈 점검 (현재 1.1MB / gzip 311KB)
-- [ ] 자체 도메인 호스팅 (잼 규칙)
+- [x] vibej.am 위젯 동작 확인 (현재 index.html 에 삽입)
+- [ ] **자체 도메인 호스팅** (잼 규칙) — Vercel (client) + Render/Railway (server). Vercel은 Colyseus serverless 부적합으로 client만.
+- [ ] 모바일 빌드 사이즈 점검 (현재 1.25MB / gzip 353KB)
+- [ ] 모바일 동작 검증 (iOS Safari 자이로/터치)
 - [ ] AI 코드 비율 ≥ 90% 유지
+
+## 6.1 잼 일정 (마감 2026-05-01 13:37 UTC)
+
+**Day 1 (시각 P0)** — 잼 30초 룰 충족용 시그니처:
+1. ~~카메라 앵글~~ ✅ 완료 (Phase 7)
+2. postprocessing + Bloom 도입
+3. 검 emissive HDR (라이트세이버 톤)
+4. 검 트레일 (drei `<Trail>`)
+5. 임팩트 링/셰이크 (BLOCK/HIT 시각화)
+6. KO splash + 콜로세움 외곽 링 분리
+7. Stylized water shader
+
+**Day 2 (멀티 + 배포)**:
+1. 사설방 Colyseus DuelRoom
+2. 랭크 / MMR
+3. Vercel + Render 배포 + 컴플라이언스 검증
+
+**P2 폴리시 (시간 남으면)**: MeshToonMaterial, 카메라 임팩트 셰이크/줌, 다리 메시 + walk 애니메이션, HUD 폰트, 사운드.
 
 ## 7. 화이트스페이스 결합 가능성
 

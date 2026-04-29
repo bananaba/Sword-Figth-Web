@@ -15,18 +15,17 @@ import type { WeaponStats } from "./types.js";
  * need a switch on weapon identity.
  */
 export const BASIC_SWORD: WeaponStats = {
-  sliceKnockback: 3.0,
-  thrustKnockback: 5.0,
-  counterKnockback: 7.0,
+  sliceKnockback: 8.0,
+  thrustKnockback: 14.0,
+  counterKnockback: 10.0,
   attackCooldownMs: 600,
   guardAngleTolerance: (30 * Math.PI) / 180,
   thrustReach: 1.4,
   thrustChargeMs: 280,
-  stunMs: 800,
-  counterWindowMs: 600,
+  stunMs: 1500,
   bladeLength: 1.2,
   minSliceReach: 0.35,
-  attackerFollowFraction: 0.5,
+  attackerFollowFraction: 1.0,
   motionImmunityVelocityThreshold: 1.0,
   tradeImmuneMs: 250,
   windUpMs: 280,

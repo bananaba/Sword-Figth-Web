@@ -28,7 +28,7 @@ interface PendingAttack extends AttackVisualState {
   resolved: boolean;
 }
 
-const FRICTION = 2.5;
+const FRICTION = 5.0;
 const SHOULDER_Y = 1.15;
 const BODY_HALF_W = 0.32;
 const BODY_HEIGHT = 1.7;
@@ -171,6 +171,7 @@ function initialVisual(
     attack: null,
     stunned: false,
     cooldown: false,
+    tradeImmune: false,
     speed: 0,
     bodyColor: color,
     transparentWhenIdle,
@@ -276,6 +277,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     if (now < self.attackCooldownUntil) return null;
     if (now < self.stunUntil) return null;
     if (pendingRef.current) return null;
+    if (Math.abs(self.velX) > weapon.motionImmunityVelocityThreshold) return null;
 
     const windUp = kind === "slice" ? weapon.windUpMs : weapon.thrustChargeMs;
     const impactAt = now + windUp;
@@ -540,6 +542,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       playerVisual.current.attack = pendingPlayerAttack.current;
       playerVisual.current.stunned = now < p.stunUntil;
       playerVisual.current.cooldown = now < p.attackCooldownUntil;
+      playerVisual.current.tradeImmune = now < p.tradeImmuneUntil;
       playerVisual.current.speed = Math.abs(p.velX);
 
       opponentVisual.current.worldZ = o.posX;
@@ -550,6 +553,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       opponentVisual.current.attack = pendingOpponentAttack.current;
       opponentVisual.current.stunned = now < o.stunUntil;
       opponentVisual.current.cooldown = now < o.attackCooldownUntil;
+      opponentVisual.current.tradeImmune = now < o.tradeImmuneUntil;
       opponentVisual.current.speed = Math.abs(o.velX);
 
       const phaseDeadline =

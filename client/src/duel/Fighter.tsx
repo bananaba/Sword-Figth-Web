@@ -7,6 +7,24 @@ export const SHOULDER_Y = 1.15;
 export const BODY_HEIGHT = 1.7;
 export const BODY_HALF_WIDTH = 0.32;
 export const BODY_DEPTH = 0.42;
+const STUN_STAR_Y = BODY_HEIGHT + 0.55;
+const STUN_STAR_RADIUS = 0.42;
+
+const starShape = (() => {
+  const shape = new THREE.Shape();
+  const outer = 0.12;
+  const inner = 0.05;
+  for (let i = 0; i < 10; i += 1) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  return shape;
+})();
 
 /**
  * Visual representation of a committed attack. Lives on FighterVisualState
@@ -34,6 +52,8 @@ export interface FighterVisualState {
   attack: AttackVisualState | null;
   stunned: boolean;
   cooldown: boolean;
+  /** True during post-hit grace window (resolver tradeImmuneUntil). */
+  tradeImmune: boolean;
   /** Current speed magnitude — used so knockback motion stays opaque. */
   speed: number;
   bodyColor: string;
@@ -68,6 +88,7 @@ export function Fighter({ state }: FighterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
   const swordRef = useRef<THREE.Group>(null);
+  const stunGroupRef = useRef<THREE.Group>(null);
 
   const bodyMaterial = useMemo(
     () =>
@@ -108,10 +129,9 @@ export function Fighter({ state }: FighterProps) {
       groupRef.current.rotation.y = s.facing > 0 ? 0 : Math.PI;
     }
 
-    const idle =
-      s.attack === null && !s.stunned && s.speed < 0.5;
+    const inImpactFrames = s.stunned || s.tradeImmune;
     const targetOpacity =
-      s.transparentWhenIdle && idle ? IDLE_OPACITY : ACTIVE_OPACITY;
+      s.transparentWhenIdle && !inImpactFrames ? IDLE_OPACITY : ACTIVE_OPACITY;
     bodyMaterial.opacity = THREE.MathUtils.lerp(
       bodyMaterial.opacity,
       targetOpacity,
@@ -130,12 +150,22 @@ export function Fighter({ state }: FighterProps) {
       const pose = currentSwordPose(s, now);
       orientSegment(
         swordRef.current,
-        worldBladePlaneToLocal(pose.fromBladePlane, s.worldZ, s.facing),
-        worldBladePlaneToLocal(pose.toBladePlane, s.worldZ, s.facing),
+        bladePlaneToLocal(pose.fromBladePlane, s.facing),
+        bladePlaneToLocal(pose.toBladePlane, s.facing),
       );
       swordMaterial.color.set(pose.color);
       swordMaterial.emissive.set(pose.emissive);
       swordMaterial.emissiveIntensity = pose.emissiveIntensity;
+    }
+
+    if (stunGroupRef.current) {
+      stunGroupRef.current.visible = s.stunned;
+      if (s.stunned) {
+        const t = now * 0.005;
+        stunGroupRef.current.rotation.y = t;
+        stunGroupRef.current.position.y =
+          STUN_STAR_Y + Math.sin(t * 1.6) * 0.04;
+      }
     }
   });
 
@@ -149,6 +179,26 @@ export function Fighter({ state }: FighterProps) {
         <sphereGeometry args={[0.18, 16, 16]} />
         <primitive object={headMaterial} attach="material" />
       </mesh>
+      <group ref={stunGroupRef} position={[0, STUN_STAR_Y, 0]} visible={false}>
+        <mesh position={[STUN_STAR_RADIUS, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+          <shapeGeometry args={[starShape]} />
+          <meshStandardMaterial
+            color="#facc15"
+            emissive="#fde68a"
+            emissiveIntensity={1.6}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        <mesh position={[-STUN_STAR_RADIUS, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+          <shapeGeometry args={[starShape]} />
+          <meshStandardMaterial
+            color="#facc15"
+            emissive="#fde68a"
+            emissiveIntensity={1.6}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      </group>
       <group ref={swordRef}>
         <mesh castShadow>
           <boxGeometry args={[0.05, 1.0, 0.05]} />
@@ -255,12 +305,10 @@ function lerpVec(a: Vec2, b: Vec2, t: number): Vec2 {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
-function worldBladePlaneToLocal(
-  point: Vec2,
-  worldZ: number,
-  facing: number,
-): THREE.Vector3 {
-  return new THREE.Vector3(facing * point.x, point.y, -facing * worldZ);
+const SWORD_FORWARD_OFFSET = 1.6;
+
+function bladePlaneToLocal(point: Vec2, facing: number): THREE.Vector3 {
+  return new THREE.Vector3(facing * point.x, point.y, SWORD_FORWARD_OFFSET);
 }
 
 function orientSegment(group: THREE.Group, from: THREE.Vector3, to: THREE.Vector3): void {

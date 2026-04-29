@@ -55,7 +55,6 @@ export function DuelDebugScene({ player, opponent }: DuelDebugSceneProps) {
 export interface DuelTuning {
   attackCooldownMs: number;
   guardAngleToleranceDeg: number;
-  counterWindowMs: number;
   stunMs: number;
   sliceKnockback: number;
   thrustKnockback: number;
@@ -75,7 +74,6 @@ export function tuningFromWeapon(weapon: WeaponStats): DuelTuning {
   return {
     attackCooldownMs: weapon.attackCooldownMs,
     guardAngleToleranceDeg: (weapon.guardAngleTolerance * 180) / Math.PI,
-    counterWindowMs: weapon.counterWindowMs,
     stunMs: weapon.stunMs,
     sliceKnockback: weapon.sliceKnockback,
     thrustKnockback: weapon.thrustKnockback,
@@ -96,7 +94,6 @@ export function tuningToWeaponPatch(tuning: DuelTuning): Partial<WeaponStats> {
   return {
     attackCooldownMs: tuning.attackCooldownMs,
     guardAngleTolerance: (tuning.guardAngleToleranceDeg * Math.PI) / 180,
-    counterWindowMs: tuning.counterWindowMs,
     stunMs: tuning.stunMs,
     sliceKnockback: tuning.sliceKnockback,
     thrustKnockback: tuning.thrustKnockback,
@@ -185,19 +182,10 @@ export function DuelDebugPanel({ tuning, onChange, onReset }: DuelDebugPanelProp
         onChange={(v) => update("guardAngleToleranceDeg", v)}
       />
       <Slider
-        label="counter window"
+        label="stun / counter window"
         unit="ms"
         min={150}
-        max={1500}
-        step={25}
-        value={tuning.counterWindowMs}
-        onChange={(v) => update("counterWindowMs", v)}
-      />
-      <Slider
-        label="stun"
-        unit="ms"
-        min={150}
-        max={2000}
+        max={3000}
         step={25}
         value={tuning.stunMs}
         onChange={(v) => update("stunMs", v)}

@@ -80,7 +80,7 @@ export function resolveAttack(
       return {
         kind: "block",
         knockback: 0,
-        attackerStun: 0,
+        attackerStun: weapon.stunMs,
         defenderCounterWindow: 0,
       };
     }
@@ -128,7 +128,7 @@ export function resolveAttack(
       kind: "block",
       knockback: 0,
       attackerStun: weapon.stunMs,
-      defenderCounterWindow: weapon.counterWindowMs,
+      defenderCounterWindow: weapon.stunMs,
     };
   }
 
@@ -214,11 +214,17 @@ export function applyOutcome(
 
   // Trade immunity: whoever LANDED the hit (the attacker on hit/pierce) gets
   // a brief grace where they cannot be hit back. This is what voids
-  // simultaneous retaliations between the two fighters.
+  // simultaneous retaliations between the two fighters. The defender's stun
+  // is also cleared — taking a hit immediately frees you from the lock so
+  // counters function as the canonical "release" for a successful read.
   if (outcome.kind === "hit" || outcome.kind === "pierce") {
     nextAttacker = {
       ...nextAttacker,
       tradeImmuneUntil: now + weapon.tradeImmuneMs,
+    };
+    nextDefender = {
+      ...nextDefender,
+      stunUntil: 0,
     };
   }
 

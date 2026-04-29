@@ -124,10 +124,13 @@ export interface WeaponStats {
   thrustReach: number;
   /** Wind-up duration for thrust before impact lands. */
   thrustChargeMs: number;
-  /** Stun applied to an attacker who got perpendicular-blocked. */
+  /**
+   * Duration of the post-block window. Used as:
+   *   - attacker's stun lockout after a perpendicular slice block or thrust block
+   *   - defender's counter window (next attack uses counterKnockback)
+   * Both ends of the dynamic share the same clock so they always resolve together.
+   */
   stunMs: number;
-  /** Window during which the defender's next attack uses counterKnockback. */
-  counterWindowMs: number;
   /** Static blade length (sword orientation = grip → tip, fixed length). */
   bladeLength: number;
   /** Minimum slice drag distance for the input to register. Below this the input is ignored. */

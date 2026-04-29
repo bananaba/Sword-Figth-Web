@@ -32,13 +32,14 @@ function GameStage({ duel, debug }: { duel: UseDuelLoop; debug: boolean }) {
       );
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(ndc, camera);
-      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      const playerZ = duel.playerVisual.current.worldZ;
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -playerZ);
       const target = new THREE.Vector3();
       const hit = raycaster.ray.intersectPlane(plane, target);
       if (!hit) return { x: 0, y: SHOULDER_Y };
       return { x: target.x, y: target.y };
     },
-    [camera],
+    [camera, duel],
   );
 
   const input = useMouseInput({
@@ -75,6 +76,11 @@ function GameStage({ duel, debug }: { duel: UseDuelLoop; debug: boolean }) {
     }
 
     duel.tick(dt, now);
+
+    const playerZ = duel.playerVisual.current.worldZ;
+    const targetCamZ = playerZ - 1.6;
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, 0.22);
+    camera.lookAt(0, 1.1, camera.position.z + 3.7);
   });
 
   return (
@@ -121,7 +127,7 @@ export function Duel() {
   }, []);
 
   const cameraInit = useMemo(
-    () => ({ position: [0.6, 1.95, PLAYER_Z - 1.5] as [number, number, number] }),
+    () => ({ position: [0, 2.05, PLAYER_Z - 1.6] as [number, number, number] }),
     [],
   );
 
@@ -138,9 +144,6 @@ export function Duel() {
       <Canvas
         shadows
         camera={{ ...cameraInit, fov: 52, near: 0.1, far: 100 }}
-        onCreated={({ camera }) => {
-          camera.lookAt(0, 1.0, 0.4);
-        }}
       >
         <Arena3D />
         <GameStage duel={duel} debug={debug} />
