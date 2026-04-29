@@ -1,24 +1,25 @@
 # Ranked Multiplayer on Cloudflare
 
-> 작성: 2026-04-29 / 11a 구현 반영: 2026-04-29
+> 작성: 2026-04-29 / 11.6 구현 반영: 2026-04-29
 >
 > 목적: game jam 제출 목표에서 **무료 범위**로 가장 경쟁력 있는 1v1 랭크 멀티플레이 구조를 정한다.
 
-## 구현 상태 (2026-04-29 / Phase 11a)
+## 구현 상태 (2026-04-29 / Phase 11.6)
 
-`worker/` 워크스페이스 기준. 30/30 tests passing.
+`worker/` 워크스페이스 기준. 46/46 tests passing.
 
 | 항목 | 상태 |
 |---|---|
-| Worker 라우터 (`/healthz`, `/leaderboard` stub, `/matchmake`, `/rooms/:id`, `OPTIONS`) | ✅ |
-| `RankedQueue` DO (in-memory ±200 매칭) | ✅ — 영속화 / 30s 범위 확장 미구현 |
-| `DuelRoom` DO (WS upgrade, alarm 30Hz tick) | ✅ — Hibernation API 미사용, room id "duel-room" 하드코드 |
+| Worker 라우터 (`/healthz`, `/leaderboard`, `/me`, `/matchmake`, `/rooms/:id`, `OPTIONS`) | ✅ |
+| `RankedQueue` DO (persistent ±200 매칭) | ✅ — storage-backed waiting list, polling dedupe, unique roomId. 30s 범위 확장은 P2 |
+| `DuelRoom` DO (WS upgrade, alarm 30Hz tick) | ✅ — Hibernation API 미사용 |
 | `DuelRoomSession` 매치 상태머신 (waiting/countdown/fighting/roundOver/matchOver) | ✅ |
 | `resolveAttack` / `applyOutcome` 권위 호출 | ✅ |
-| ELO K=32 matchOver payload | ✅ — rating 영속화 / Top 20 leaderboard 미구현 |
+| ELO K=32 matchOver payload | ✅ — matchOver 후 `Leaderboard` DO에 W/L/D + rating 영속화 |
 | 30Hz `state` broadcast (fighter posX/velX/guard/stun/cooldown) | ✅ |
 | CORS (`*` origin + OPTIONS preflight) | ✅ |
-| 클라 네트워크 어댑터 | ⬜ Phase 11b |
+| 클라 네트워크 어댑터 | ✅ — `useRankedMatch`, `/matchmake` polling, WS hello/ready/guard/attack, server state interpolation |
+| 리더보드 클라/서버 | ✅ — Top 20 + `/me` |
 | `wrangler deploy` | ⬜ Phase 11d |
 
 **메시지 셰이프 변경 — 이 문서 §"서버 권위 DuelRoom" 섹션과의 차이**:
@@ -28,7 +29,7 @@
 
 ## 결론
 
-현재 듀얼 멀티 서버가 아직 구현되지 않았고, Colyseus 서버도 폐기된 비행기 스캐폴드 중심이다. 따라서 기존 Node/Colyseus 서버를 Render/Railway에 올리는 것보다, 새 멀티플레이 서버는 **Cloudflare Workers + Durable Objects**로 구현한다.
+랭크 1v1 멀티 서버는 Cloudflare Workers + Durable Objects 기반으로 구현됐다. 기존 Node/Colyseus 서버는 폐기된 비행기 스캐폴드 중심이므로 잼 제출용 멀티플레이 경로에서는 사용하지 않는다.
 
 추천 조합:
 
@@ -245,4 +246,3 @@ history:
 프론트 배포는 Vercel 또는 Cloudflare Pages 중 작업 속도가 빠른 쪽을 선택한다.
 Render/Railway/Colyseus 배포는 fallback으로만 둔다.
 ```
-

@@ -41,8 +41,8 @@ test("RankedQueue matches two players inside the rating window", async () => {
   assert.equal(body.status, "matched");
   assert.match(
     body.roomId,
-    /^ranked-p1-p2-[0-9a-z]+$/,
-    "roomId must include base36 timestamp suffix to keep DO instances unique per match",
+    /^ranked-p1-p2-[0-9a-z]+-[0-9a-f-]{36}$/,
+    "roomId must include a random suffix to keep DO instances unique per match",
   );
   assert.deepEqual(body.players, [
     { playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8" },
@@ -60,8 +60,6 @@ test("RankedQueue mints a fresh roomId every match between the same pair", async
   const queue = new RankedQueue({}, {});
   await queue.fetch(postMatchmake(a));
   const r1 = await (await queue.fetch(postMatchmake(b))).json();
-  // Force a measurable wall-clock gap so Date.now()-based suffixes differ.
-  await new Promise((r) => setTimeout(r, 5));
   await queue.fetch(postMatchmake(a));
   const r2 = await (await queue.fetch(postMatchmake(b))).json();
 
@@ -128,4 +126,19 @@ test("RankedQueue dedupes the same playerId polling repeatedly", async () => {
   const body = await last.json();
   assert.equal(body.status, "queued");
   assert.equal(body.queueSize, 1, "duplicate polls must not stack");
+});
+
+test("RankedQueue preserves a polling player's queue position", async () => {
+  const queue = new RankedQueue({}, {});
+  const first = { playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8" };
+  const second = { playerId: "p2", name: "Ben", rating: 1300, saberColor: "#e879f9" };
+  const challenger = { playerId: "p3", name: "Cam", rating: 1000, saberColor: "#facc15" };
+
+  await queue.fetch(postMatchmake(first));
+  await queue.fetch(postMatchmake(second));
+  await queue.fetch(postMatchmake(first));
+  const matched = await (await queue.fetch(postMatchmake(challenger))).json();
+
+  assert.equal(matched.status, "matched");
+  assert.equal(matched.players[0].playerId, "p1", "polling must not move p1 behind p2");
 });

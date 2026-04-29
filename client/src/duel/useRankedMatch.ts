@@ -658,7 +658,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
     // back to a deadline-from-phaseStarted estimate if we haven't received
     // the timestamp yet (first frames).
     const remaining =
-      phaseEndsAtServer.current > 0
+      phaseEndsAtServer.current > 0 && haveServerClock
         ? Math.max(0, phaseEndsAtServer.current - serverNow)
         : Math.max(0, phaseDeadline - (now - matchRef.current.phaseStartedAt));
 

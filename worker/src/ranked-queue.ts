@@ -44,12 +44,17 @@ export class RankedQueue {
     await this.ensureLoaded();
 
     // Same playerId polling again (queue side keeps polling every 2s while
-    // waiting) — drop the prior entry so we don't double-queue or get matched
-    // against ourselves.
-    this.waiting = this.waiting.filter((w) => w.playerId !== player.playerId);
+    // waiting) — update the existing entry in place so we don't double-queue,
+    // get matched against ourselves, or move the player to the back.
+    const existingIndex = this.waiting.findIndex((w) => w.playerId === player.playerId);
+    if (existingIndex >= 0) {
+      this.waiting[existingIndex] = player;
+    }
 
     const matchIndex = this.waiting.findIndex(
-      (waitingPlayer) => Math.abs(waitingPlayer.rating - player.rating) <= MATCH_RANGE,
+      (waitingPlayer) =>
+        waitingPlayer.playerId !== player.playerId &&
+        Math.abs(waitingPlayer.rating - player.rating) <= MATCH_RANGE,
     );
 
     if (matchIndex >= 0) {
@@ -66,7 +71,9 @@ export class RankedQueue {
       return json(response);
     }
 
-    this.waiting.push(player);
+    if (existingIndex < 0) {
+      this.waiting.push(player);
+    }
     await this.persist();
     const response: MatchmakeResponse = {
       status: "queued",
@@ -121,5 +128,5 @@ async function readJson(request: Request): Promise<unknown> {
  * match see leftover `ready`/`fighters` state from the first.
  */
 function roomIdFor(firstPlayerId: string, secondPlayerId: string, at: number): string {
-  return `ranked-${firstPlayerId}-${secondPlayerId}-${at.toString(36)}`;
+  return `ranked-${firstPlayerId}-${secondPlayerId}-${at.toString(36)}-${crypto.randomUUID()}`;
 }

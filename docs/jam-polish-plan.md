@@ -77,11 +77,11 @@
 
 | # | 작업 | 상태 | 비고 |
 |---|---|---|---|
-| 23 | Cloudflare Worker entrypoint + WebSocket upgrade 라우팅 | ✅ 11a | `/healthz`, `/leaderboard`(stub), `/matchmake`, `/rooms/:id`, `OPTIONS` |
-| 24 | `RankedQueue` Durable Object — ELO ±200 큐 | ✅ 11a (in-memory) | 30s 범위 확장 + 영속화는 P1 |
+| 23 | Cloudflare Worker entrypoint + WebSocket upgrade 라우팅 | ✅ 11a/11c | `/healthz`, `/leaderboard`, `/me`, `/matchmake`, `/rooms/:id`, `OPTIONS` |
+| 24 | `RankedQueue` Durable Object — ELO ±200 큐 | ✅ 11a/11.6 | storage-backed waiting list + polling dedupe. 30s 범위 확장은 P2 |
 | 25 | `DuelRoom` Durable Object — 권위 호출 | ✅ 11a | hello/ready/guard/attack 핸들링, alarm 30Hz tick, ringout/timeout, matchOver+ELO |
-| 26 | `playerId`, `name`, `rating`, `saberColor` payload 연결 | ✅ 11a (서버 측) | 클라 어댑터에서 localStorage 송신은 Phase 11b |
-| 27 | ELO(K=32) 산출 | ✅ 11a (matchOver payload) | rating 영속화 + Top 20 leaderboard는 Phase 11c |
+| 26 | `playerId`, `name`, `rating`, `saberColor` payload 연결 | ✅ 11a/11b | 클라 localStorage identity/rating 송신 포함 |
+| 27 | ELO(K=32) 산출 | ✅ 11a/11c | matchOver payload + Leaderboard DO 영속화 |
 | 28 | 서버 outcome 브로드캐스트 (`impact` 메시지) | ✅ 11a | 클라 흡수는 Phase 11b + 10a 디스패처 |
 | 29 | 30Hz `state` broadcast (fighter posX/velX/guard/stun/cooldown) | ✅ 11a | 이동 입력 채널 없음 — outcome-driven movement (`applyOutcome` velX → `tickFighter` 적분) |
 | **11b** | **클라 네트워크 어댑터** | ✅ 완료 | `useRankedMatch` 훅 + `network/{types,matchmake,RankedClient}` — TitleScreen에 Solo/Ranked 토글, /matchmake 폴링, WS hello/ready/guard/attack, `state` posX lerp 인터폴레이션, `impact` → `dispatchImpactFx`, RankedOverlay (queue/connecting/match_over) |
@@ -202,11 +202,11 @@
 | 10a 디스패처 인프라 | ✅ 완료 (2026-04-29, §9 Phase 10a) | 없음 |
 | 10b 시간/공간 효과 | ✅ 완료 (2026-04-29, §9 Phase 10b) | 10a |
 | 9 Audio | ⬜ | **SFX 12개 도착** |
-| 11a Cloudflare 권위 룸 + state broadcast + CORS | ✅ 완료 (2026-04-29, `worker/`, 30/30 tests) | 없음 |
+| 11a Cloudflare 권위 룸 + state broadcast + CORS | ✅ 완료 (2026-04-29, `worker/`) | 없음 |
 | 11b 클라 네트워크 어댑터 | ✅ 완료 (2026-04-29, §9 Phase 11b) | 11a, 10a |
 | 11c 퍼시스턴스 + 리더보드 | ✅ 완료 (2026-04-29, §9 Phase 11c) | 11a |
 | 11.5 Sparks 파티클 | ✅ 완료 (2026-04-29, §9 Phase 11.5) | 10a |
-| **11.6 Audit pass + 신뢰성 패치** | **✅ 완료 (2026-04-29, §9 Phase 11.6, 9 patches, 45/45 tests)** | **11a–c, 11.5** |
+| **11.6 Audit pass + 신뢰성 패치** | **✅ 완료 (2026-04-29, §9 Phase 11.6, 12 patches, 46/46 tests)** | **11a–c, 11.5** |
 | 12 캐릭터 메시 통합 | ⬜ | **Quaternius + Mixamo 도착**, 9.5(rim 셰이더 패턴) |
 | 13 배포 | ⬜ | 11.6 |
 

@@ -7,7 +7,7 @@
 **플랫폼 / 입력**: PC 1차 타겟. 게임플레이는 **마우스 전용** — 키보드 없이도 풀 플레이 가능 (좌클릭 슬라이스, 휠클릭/더블 클릭 찌르기, 우클릭 가드). 모바일(터치/자이로) 호환은 잼 마감 전 시간 남으면 추가하는 P2 폴리시.
 
 - **클라이언트**: Vite + React + TypeScript + Three.js (React Three Fiber)
-- **랭크 서버**: `worker/` Cloudflare Workers + Durable Objects (`RankedQueue`, `DuelRoom`) 골격 구축 중
+- **랭크 서버**: `worker/` Cloudflare Workers + Durable Objects (`RankedQueue`, `DuelRoom`, `Leaderboard`) 구현
 - **레거시 서버**: 현재 Colyseus 스캐폴드는 비행기 인프라 검증용으로만 유지
 - **공유**: `shared/` 워크스페이스에 클라/서버 공통 타입
 - **빌드**: Yarn Workspaces (모노레포)
