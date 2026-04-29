@@ -58,8 +58,13 @@ test("RankedQueue mints a fresh roomId every match between the same pair", async
   void first;
 
   const queue = new RankedQueue({}, {});
+  // Round 1: a queues, b arrives and matches → r1.
   await queue.fetch(postMatchmake(a));
   const r1 = await (await queue.fetch(postMatchmake(b))).json();
+  // a's next poll picks up the pending match for round 1 — drain it so the
+  // queue is clean before round 2 starts.
+  await queue.fetch(postMatchmake(a));
+  // Round 2: same pair re-queues and re-matches → r2.
   await queue.fetch(postMatchmake(a));
   const r2 = await (await queue.fetch(postMatchmake(b))).json();
 

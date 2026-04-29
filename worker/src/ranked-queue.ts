@@ -7,6 +7,7 @@ import {
 
 const MATCH_RANGE = 200;
 const WAITING_KEY = "waiting";
+const MATCHED_KEY = "matched";
 
 interface QueueStorageLike {
   get<T = unknown>(key: string): Promise<T | undefined>;
@@ -17,8 +18,19 @@ interface QueueStateLike {
   storage?: QueueStorageLike;
 }
 
+interface PendingMatch {
+  roomId: string;
+  players: [MatchmakePlayer, MatchmakePlayer];
+}
+
 export class RankedQueue {
   private waiting: MatchmakePlayer[] = [];
+  /**
+   * Match results stashed by playerId for the *other* side to pick up on
+   * their next /matchmake poll. Without this, only the player whose request
+   * created the match learns the roomId — the partner stays in queue forever.
+   */
+  private pendingMatches: Map<string, PendingMatch> = new Map();
   private loaded: boolean;
 
   constructor(
@@ -43,7 +55,20 @@ export class RankedQueue {
 
     await this.ensureLoaded();
 
-    // Same playerId polling again (queue side keeps polling every 2s while
+    // 1) Pickup any match created for us by the partner's earlier request.
+    const pending = this.pendingMatches.get(player.playerId);
+    if (pending) {
+      this.pendingMatches.delete(player.playerId);
+      await this.persist();
+      const response: MatchmakeResponse = {
+        status: "matched",
+        roomId: pending.roomId,
+        players: pending.players,
+      };
+      return json(response);
+    }
+
+    // 2) Same playerId polling again (queue side keeps polling every 2s while
     // waiting) — update the existing entry in place so we don't double-queue,
     // get matched against ourselves, or move the player to the back.
     const existingIndex = this.waiting.findIndex((w) => w.playerId === player.playerId);
@@ -62,11 +87,25 @@ export class RankedQueue {
       if (!opponent) {
         return json({ error: "queue_corrupt" }, { status: 500 });
       }
+      // Also drop ourselves from waiting if we were in it (re-poll case).
+      const myWaitingIdx = this.waiting.findIndex(
+        (w) => w.playerId === player.playerId,
+      );
+      if (myWaitingIdx >= 0) this.waiting.splice(myWaitingIdx, 1);
+
+      const roomId = roomIdFor(opponent.playerId, player.playerId, Date.now());
+      const players: [MatchmakePlayer, MatchmakePlayer] = [opponent, player];
+
+      // Stash for the opponent's next poll — they were waiting and got matched
+      // by us, but their last response was "queued". Without this they'd never
+      // learn the roomId.
+      this.pendingMatches.set(opponent.playerId, { roomId, players });
       await this.persist();
+
       const response: MatchmakeResponse = {
         status: "matched",
-        roomId: roomIdFor(opponent.playerId, player.playerId, Date.now()),
-        players: [opponent, player],
+        roomId,
+        players,
       };
       return json(response);
     }
@@ -101,6 +140,12 @@ export class RankedQueue {
     if (Array.isArray(stored)) {
       this.waiting = stored;
     }
+    const pendingStored = await storage.get<[string, PendingMatch][]>(
+      MATCHED_KEY,
+    );
+    if (Array.isArray(pendingStored)) {
+      this.pendingMatches = new Map(pendingStored);
+    }
     this.loaded = true;
   }
 
@@ -108,6 +153,7 @@ export class RankedQueue {
     const storage = this.state?.storage;
     if (!storage) return;
     await storage.put(WAITING_KEY, this.waiting);
+    await storage.put(MATCHED_KEY, Array.from(this.pendingMatches.entries()));
   }
 }
 
