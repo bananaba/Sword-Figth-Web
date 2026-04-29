@@ -16,6 +16,9 @@ import {
 export type { WeaponStats };
 import type { AttackVisualState, FighterVisualState } from "./Fighter";
 import type { MouseAttack } from "./useMouseInput";
+import { dispatchImpactFx } from "./dispatchImpactFx";
+import { useImpacts } from "./stores/useImpacts";
+import { useShake } from "./stores/useShake";
 
 /**
  * Internal record of an in-flight attack — what the resolver needs at impact
@@ -72,20 +75,6 @@ export interface DuelHudState {
   lastOutcome: { kind: Outcome["kind"]; at: number; attackerIsPlayer: boolean } | null;
 }
 
-/**
- * Visual impact event — appended to a ring buffer when the resolver fires a
- * non-rejected outcome. Rendering layer (`ImpactRings`) and camera-shake
- * driver consume these by id.
- */
-export interface ImpactEvent {
-  id: number;
-  kind: Outcome["kind"];
-  attackerIsPlayer: boolean;
-  worldZ: number;
-  worldY: number;
-  at: number;
-}
-
 export interface UseDuelLoopOptions {
   initialPlayerZ: number;
   initialOpponentZ: number;
@@ -97,8 +86,6 @@ export interface UseDuelLoop {
   playerVisual: React.MutableRefObject<FighterVisualState>;
   opponentVisual: React.MutableRefObject<FighterVisualState>;
   hud: React.MutableRefObject<DuelHudState>;
-  /** Ring buffer of recent impacts (rendering + camera shake). Pruned each tick. */
-  impactEvents: React.MutableRefObject<ImpactEvent[]>;
   /** Live weapon stats — read by handlers each attack. Mutate via `updateWeapon`. */
   weapon: React.MutableRefObject<WeaponStats>;
   /** Patch weapon stats (e.g. tuning sliders). */
@@ -255,8 +242,6 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const weaponRef = useRef<WeaponStats>({ ...PLASMA_BLADE, ...(opts.initialWeapon ?? {}) });
   const pendingPlayerAttack = useRef<PendingAttack | null>(null);
   const pendingOpponentAttack = useRef<PendingAttack | null>(null);
-  const impactEvents = useRef<ImpactEvent[]>([]);
-  const nextImpactId = useRef<number>(0);
 
   const updateWeapon = useCallback((patch: Partial<WeaponStats>) => {
     weaponRef.current = { ...weaponRef.current, ...patch };
@@ -419,14 +404,19 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     defenderRef.current = next.defender;
     pending.resolved = true;
     hud.current.lastOutcome = { kind: outcome.kind, at: now, attackerIsPlayer };
-    if (outcome.kind !== "rejected" && outcome.kind !== "miss") {
-      impactEvents.current.push({
-        id: nextImpactId.current++,
-        kind: outcome.kind,
+    if (
+      outcome.kind === "hit" ||
+      outcome.kind === "pierce" ||
+      outcome.kind === "block"
+    ) {
+      // Single dispatcher fans out to impact rings + camera trauma + hit-stop
+      // (and Phase 10b: CA pulse / white flash / haptics). Phase 11 server
+      // outcomes route through the same call with the received kind.
+      dispatchImpactFx(outcome.kind, {
         attackerIsPlayer,
         worldZ: defenderRef.current.posX,
         worldY: SHOULDER_Y,
-        at: now,
+        now,
       });
     }
   };
@@ -479,7 +469,8 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     matchRef.current = initialMatch(performance.now());
     resetForNextRound();
     hud.current.lastOutcome = null;
-    impactEvents.current = [];
+    useImpacts.getState().clear();
+    useShake.getState().reset();
   }, [resetForNextRound]);
 
   const tick = useCallback(
@@ -520,6 +511,23 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
           if (winner) {
             const playerWins = match.playerWins + (winner === "player" ? 1 : 0);
             const opponentWins = match.opponentWins + (winner === "opponent" ? 1 : 0);
+            // KO cinematic: dispatch a 'ko' impact at the *loser's* position
+            // (the fighter who fell off). Routes to slow-mo envelope + max
+            // shake + flash + heavy vibrate via the shared dispatcher.
+            if (reason === "ringout") {
+              const loserZ =
+                winner === "player"
+                  ? opponentStateRef.current.posX
+                  : winner === "opponent"
+                  ? playerStateRef.current.posX
+                  : (playerStateRef.current.posX + opponentStateRef.current.posX) / 2;
+              dispatchImpactFx("ko", {
+                attackerIsPlayer: winner === "player",
+                worldZ: loserZ,
+                worldY: SHOULDER_Y,
+                now,
+              });
+            }
             matchRef.current = {
               ...match,
               phase: "roundOver",
@@ -633,11 +641,9 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       hud.current.playerWorldZ = p.posX;
       hud.current.opponentWorldZ = o.posX;
 
-      // Prune stale impact events (keep ~700ms ring lifetime headroom).
-      if (impactEvents.current.length > 0) {
-        const cutoff = now - 800;
-        impactEvents.current = impactEvents.current.filter((e) => e.at >= cutoff);
-      }
+      // Prune stale impact events from the store (kept lifetime > ring decay
+      // so ImpactRings has headroom to fade out cleanly).
+      useImpacts.getState().prune(now, 800);
     },
     [opts.arenaRadius, resetForNextRound],
   );
@@ -646,7 +652,6 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     playerVisual,
     opponentVisual,
     hud,
-    impactEvents,
     weapon: weaponRef,
     updateWeapon,
     tick,

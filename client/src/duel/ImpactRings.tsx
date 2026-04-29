@@ -1,7 +1,7 @@
 import { useFrame } from "@react-three/fiber";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import * as THREE from "three";
-import type { ImpactEvent } from "./useDuelLoop";
+import { useImpacts, type ImpactEvent } from "./stores/useImpacts";
 
 const RING_LIFE_MS = 520;
 
@@ -39,13 +39,13 @@ function ringStyle(kind: ImpactEvent["kind"]): RingStyle {
         thickness: 0.16,
         initialOpacity: 0.9,
       };
-    default:
+    case "ko":
       return {
-        color: "#cbd5e1",
-        startRadius: 0.18,
-        endRadius: 0.55,
-        thickness: 0.1,
-        initialOpacity: 0.4,
+        color: "#ffffff",
+        startRadius: 0.3,
+        endRadius: 2.4,
+        thickness: 0.32,
+        initialOpacity: 1.0,
       };
   }
 }
@@ -84,35 +84,17 @@ function ImpactRing({ event }: { event: ImpactEvent }) {
   );
 }
 
-interface Props {
-  eventsRef: React.MutableRefObject<ImpactEvent[]>;
-}
-
 /**
- * Renders an expanding ring per fresh impact event. Mirrors the resolver
- * outcome timeline; `useDuelLoop` prunes the source ref so events disappear
- * here automatically.
+ * Renders an expanding ring per fresh impact event. Subscribes directly to
+ * `useImpacts` — push from `dispatchImpactFx` triggers a re-render with the
+ * new event in the array; `useDuelLoop.tick` prunes stale entries each frame
+ * so rings stop rendering automatically.
  */
-export function ImpactRings({ eventsRef }: Props) {
-  const [active, setActive] = useState<ImpactEvent[]>([]);
-  const lastIdRef = useRef<number>(-1);
-  const lastLenRef = useRef<number>(0);
-
-  useFrame(() => {
-    const now = performance.now();
-    const fresh = eventsRef.current.filter((e) => now - e.at < RING_LIFE_MS);
-    const last = fresh[fresh.length - 1];
-    const lastId = last ? last.id : -1;
-    if (lastId !== lastIdRef.current || fresh.length !== lastLenRef.current) {
-      lastIdRef.current = lastId;
-      lastLenRef.current = fresh.length;
-      setActive(fresh);
-    }
-  });
-
+export function ImpactRings() {
+  const events = useImpacts((s) => s.events);
   return (
     <>
-      {active.map((e) => (
+      {events.map((e) => (
         <ImpactRing key={e.id} event={e} />
       ))}
     </>
