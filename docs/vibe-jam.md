@@ -77,9 +77,10 @@
 ## 8. 본 프로젝트의 컴플라이언스 체크리스트
 
 - [x] 웹 브라우저 단일 페이지 (Vite + React + Three.js)
-- [x] 추적 위젯 `index.html` 에 삽입 완료
-- [x] 로그인 없는 즉시 플레이 (사용자 익명 자동 식별)
-- [x] 무료 플레이 (백엔드는 정보 저장 / 매치메이킹 한정)
-- [ ] 자체 도메인 호스팅 (배포 시 등록)
-- [ ] AI 코드 비율 ≥ 90 % 유지 (개발 중 점검)
-- [ ] 즉시 로딩 (빌드 사이즈 / 첫 페인트 시간 모니터링)
+- [x] 추적 위젯 `index.html` L18에 삽입 완료
+- [x] 로그인 없는 즉시 플레이 — `getOrCreatePlayerId`로 익명 UUID 자동 발급, 닉/세이버 색만 입력
+- [x] 무료 플레이 — Cloudflare Workers Free + DO Free + Pages Free, 페이월 없음
+- [x] **자체 (서브)도메인 호스팅** — `https://chambara-duel.pages.dev` (Pages 본인 서브도메인, 잼 규칙 §3 "본인 도메인 / 서브도메인" 충족). 잼 마감까지 시간 남으면 사용자 커스텀 도메인 추가 가능 (P2)
+- [x] **AI 코드 비율 ≥ 90 %** — 22 commits 전체 Phase 1~13(`shared/combat/` 룰 → `client/src/duel/` 렌더 + 입력 → `worker/` Cloudflare DO)을 Claude Code(Opus) 주도 작성. 사용자는 의도(잼 컨셉, 4 라운드 피드백, 시각/타격감 방향, 무기 위계)와 결정(IP 네이밍, 캐릭터 스코프, SFX/캐릭터 에셋 수집)만 가이드. 코드/리서치/문서 모두 AI 생성 — `docs/duel-implementation.md` §9 phase history가 진실 소스.
+- [x] **즉시 로딩** — 라이브 측정(2026-04-29): Pages TTFB **71ms** / Total **81ms**, JS 번들 1.3MB raw / **gzip 388KB**, HTML 692B. `soldier.glb` 2.1MB는 `?demo=character` 라우트 한정 — 메인 `/` critical path 밖. modern broadband에서 첫 페인트 < 1s.
+- [~] 모바일 sanity (P2, 잼 §3 권장이지 필수 아님 — 키보드/마우스가 표준): viewport meta `viewport-fit=cover` 설정, `client/src/styles/index.css`에 모바일 가드 CSS 추가 — `html { touch-action: manipulation }` 더블탭 zoom 차단, `body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; user-select: none }` iOS rubber band/탭 하이라이트/드래그 충돌 회피, `input/textarea`만 user-select: text 유지. canvas는 기존 `touch-action: none` 유지. 메인 `/` 입력은 mouse 전용 — 터치 디바이스에선 합성 mouse 이벤트로 부분 작동 (slice OK, 우클릭 가드 long-press 합성, 더블탭 찌르기 가능). 디바이스 직접 검증은 사용자 작업 잔존.

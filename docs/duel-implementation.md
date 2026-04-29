@@ -311,9 +311,10 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 
 ### 배포 / 컴플라이언스
 - [x] **무료 배포** (Phase 13, 2026-04-29) — Worker `https://chambara-ranked-worker.200tiger1.workers.dev` + Client (Cloudflare Pages) `https://chambara-duel.pages.dev`. DO bindings (RANKED_QUEUE/DUEL_ROOM/LEADERBOARD) v1+v2 마이그레이션 라이브. `/healthz`, `/leaderboard`, `/matchmake` (queue→match transition) 모두 200 검증.
-- [ ] **모바일 동작 검증** (iOS Safari 자이로/터치)
-- [ ] **AI 코드 비율 ≥ 90%** 점검
-- [ ] **즉시 로딩** — 빌드 사이즈 / 첫 페인트 측정 (현재 1.38MB / gzip 388KB — Phase 13 후 dynamic import 분리 권장)
+- [x] **GitHub Actions CI/CD** (2026-04-29) — `.github/workflows/deploy.yml`, main push → verify(test+typecheck) → 병렬 deploy-worker + deploy-pages (`cloudflare/wrangler-action@v3`). secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. 첫 라이브 검증 run #25107786727 green (worker 42s + pages 45s).
+- [x] **AI 코드 비율 ≥ 90%** — Phase 1~13 22 commits 전체 Claude Code(Opus) 주도 작성, 사용자는 잼 컨셉/피드백/IP 결정만 가이드. `docs/vibe-jam.md` §8 + `docs/duel-implementation.md` §9 phase history가 근거.
+- [x] **즉시 로딩** — Pages TTFB 71ms / Total 81ms (라이브 측정, 2026-04-29), JS 번들 gzip 388KB. `soldier.glb` 2.1MB는 `?demo=character` 한정 — 메인 critical path 밖.
+- [ ] **모바일 동작 검증** (iOS Safari 자이로/터치) — P2, 30초 reject 회피
 - [ ] **두 창 라이브 매칭 smoke test** — Solo/Ranked 토글 → queue → match → state broadcast → impact → matchOver → leaderboard 갱신 흐름 (브라우저 직접)
 
 ### 컨텐츠 (P2 폴리시)
