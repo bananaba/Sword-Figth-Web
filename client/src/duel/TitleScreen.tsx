@@ -58,9 +58,10 @@ export function readStoredIdentity(): Omit<Identity, "mode"> | null {
 
 interface TitleScreenProps {
   onStart: (identity: Identity) => void;
+  onShowLeaderboard?: () => void;
 }
 
-export function TitleScreen({ onStart }: TitleScreenProps) {
+export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
   const [name, setName] = useState(() => {
     try {
       return localStorage.getItem(NAME_KEY) ?? "";
@@ -254,9 +255,30 @@ export function TitleScreen({ onStart }: TitleScreenProps) {
         </div>
       </div>
 
+      {onShowLeaderboard && (
+        <button
+          onClick={onShowLeaderboard}
+          style={{
+            marginTop: 18,
+            padding: "8px 18px",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 2,
+            color: "#94a3b8",
+            background: "transparent",
+            border: "1px solid #334155",
+            borderRadius: 6,
+            cursor: "pointer",
+            textTransform: "uppercase",
+          }}
+        >
+          View Leaderboard
+        </button>
+      )}
+
       <div
         style={{
-          marginTop: 24,
+          marginTop: 18,
           fontSize: 11,
           color: "#64748b",
           letterSpacing: 1,

@@ -12,6 +12,7 @@ import { PLASMA_BLADE, type Vec2 } from "@vibejam/shared";
 import { ARENA_RADIUS, Arena3D } from "./Arena3D";
 import { Fighter, SHOULDER_Y } from "./Fighter";
 import { ImpactRings } from "./ImpactRings";
+import { SparkParticles } from "./SparkParticles";
 import { useDuelLoop, type UseDuelLoop } from "./useDuelLoop";
 import { useMouseInput } from "./useMouseInput";
 import { DEFAULT_AI, initialAiState, tickAi, type AiState } from "./ai";
@@ -24,6 +25,7 @@ import {
   type Identity,
 } from "./TitleScreen";
 import { useRankedMatch, type RankedSummary } from "./useRankedMatch";
+import { LeaderboardView } from "./LeaderboardView";
 import {
   DuelDebugPanel,
   DuelDebugScene,
@@ -168,6 +170,7 @@ function GameStage({
       <Fighter state={duel.playerVisual} accentColor={playerAccent} />
       <Fighter state={duel.opponentVisual} accentColor={opponentAccent} />
       <ImpactRings />
+      <SparkParticles />
       {debug && <DuelDebugScene player={duel.playerVisual} opponent={duel.opponentVisual} />}
     </>
   );
@@ -175,7 +178,18 @@ function GameStage({
 
 export function Duel() {
   const [identity, setIdentity] = useState<Identity | null>(null);
-  if (!identity) return <TitleScreen onStart={setIdentity} />;
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  if (showLeaderboard) {
+    return <LeaderboardView onBack={() => setShowLeaderboard(false)} />;
+  }
+  if (!identity) {
+    return (
+      <TitleScreen
+        onStart={setIdentity}
+        onShowLeaderboard={() => setShowLeaderboard(true)}
+      />
+    );
+  }
   if (identity.mode === "ranked") {
     return (
       <RankedDuelGame

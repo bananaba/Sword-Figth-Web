@@ -85,7 +85,7 @@
 | 28 | 서버 outcome 브로드캐스트 (`impact` 메시지) | ✅ 11a | 클라 흡수는 Phase 11b + 10a 디스패처 |
 | 29 | 30Hz `state` broadcast (fighter posX/velX/guard/stun/cooldown) | ✅ 11a | 이동 입력 채널 없음 — outcome-driven movement (`applyOutcome` velX → `tickFighter` 적분) |
 | **11b** | **클라 네트워크 어댑터** | ✅ 완료 | `useRankedMatch` 훅 + `network/{types,matchmake,RankedClient}` — TitleScreen에 Solo/Ranked 토글, /matchmake 폴링, WS hello/ready/guard/attack, `state` posX lerp 인터폴레이션, `impact` → `dispatchImpactFx`, RankedOverlay (queue/connecting/match_over) |
-| **11c** | **퍼시스턴스 + 리더보드** | ⬜ | DO SQLite로 `playerId → rating, wins, losses, draws`. matchOver 시 write, `/leaderboard` Top 20 read, `/me` 조회 |
+| **11c** | **퍼시스턴스 + 리더보드** | ✅ 완료 | `Leaderboard` DO (`worker/src/leaderboard.ts`) — `storage.put/get/list` 기반 (KV 인터페이스, SQLite-backed via `new_sqlite_classes`). `playerId → {name, rating, wins, losses, draws, updatedAt}`. matchOver → DuelRoomSession `onMatchOver` 콜백 → DuelRoom이 fire-and-forget으로 internal POST /result 송신. 클라 `/leaderboard` Top 20 + `/me` 라우팅, `LeaderboardView` 컴포넌트 (TitleScreen에 "View Leaderboard" 진입). 30 → 42 worker tests |
 | **11d** | **배포** | ⬜ | `wrangler deploy` + 클라 env 분기 (Worker URL) — Phase 13에서 |
 
 ### Phase 11.5 — Sparks 파티클 (~2h, 에셋 0 의존)
@@ -94,7 +94,7 @@
 
 | # | 작업 | OUTCOME별 |
 |---|---|---|
-| 30 | `InstancedMesh` + vertex shader (`pos = position + velocity * uTime + 0.5 * gravity * uTime²`) | BLOCK 시안 8–12개 / HIT 마젠타 5–10개 / PIERCE 오렌지+회색 cloth 15개 / KO 흰→마젠타 30개 + ring shockwave |
+| 30 | ✅ `THREE.Points` + 커스텀 ShaderMaterial (`pos = origin + v·t + ½·g·t²`) — `useImpacts` 구독 ring-buffer 풀 (`SparkParticles.tsx`) | BLOCK 시안 10 / HIT 마젠타 9 / PIERCE 오렌지(60%)+회색(40%) 15 / KO 흰(50%)+마젠타(50%) 30. AdditiveBlending + Bloom-passing 색상 boost |
 
 ### Phase 12 — 캐릭터 메시 통합 (~3–5h, **Quaternius/Mixamo 도착 후**)
 
@@ -204,8 +204,8 @@
 | 9 Audio | ⬜ | **SFX 12개 도착** |
 | 11a Cloudflare 권위 룸 + state broadcast + CORS | ✅ 완료 (2026-04-29, `worker/`, 30/30 tests) | 없음 |
 | 11b 클라 네트워크 어댑터 | ✅ 완료 (2026-04-29, §9 Phase 11b) | 11a, 10a |
-| 11c 퍼시스턴스 + 리더보드 | ⬜ | 11a |
-| 11.5 Sparks 파티클 | ⬜ | 10a |
+| 11c 퍼시스턴스 + 리더보드 | ✅ 완료 (2026-04-29, §9 Phase 11c) | 11a |
+| 11.5 Sparks 파티클 | ✅ 완료 (2026-04-29, §9 Phase 11.5) | 10a |
 | 12 캐릭터 메시 통합 | ⬜ | **Quaternius + Mixamo 도착**, 9.5(rim 셰이더 패턴) |
 | 13 배포 | ⬜ | 11 |
 
