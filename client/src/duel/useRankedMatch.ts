@@ -117,7 +117,7 @@ export interface UseRankedMatchResult extends UseDuelLoop {
 // Visual smoothing — fraction of the gap closed per frame at ~60fps. Higher
 // = snappier (more raw teleports), lower = smoother (more visual lag).
 // 0.32 hides 30Hz state quantization while keeping reactions feel fast.
-const POSITION_LERP = 0.55;
+const POSITION_LERP = 0.18;
 
 // Throttle outgoing guard updates to ~30Hz. The render loop ticks 60+Hz so
 // without this we'd flood the WS with redundant guard packets.
@@ -260,6 +260,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
   const abortRef = useRef<AbortController | null>(null);
 
   const lastGuardSentAt = useRef<number>(0);
+  const lastTipSentAt = useRef<number>(0);
 
   // ── Server message handler ─────────────────────────────────────────────
   const handleServerMessage = useCallback(
@@ -596,6 +597,12 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
 
   const setPlayerBladeTip = useCallback((tip: Vec2) => {
     playerVisual.current.bladeTipBladePlane = tip;
+    // Throttle outgoing tip updates to ~30 Hz (same cadence as guard).
+    const now = performance.now();
+    if (now - lastTipSentAt.current >= GUARD_SEND_INTERVAL_MS) {
+      lastTipSentAt.current = now;
+      clientRef.current?.send({ t: "tip", tip });
+    }
   }, []);
 
   const readFighters = useCallback(
@@ -646,11 +653,10 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
     // Position lerp toward latest server target. Visual posX is what the
     // camera follows; logical fighter mirror tracks the server snapshot.
     if (tp) {
-      // Client-side dead reckoning: between 30 Hz state snapshots, advance the
-      // server target with its own velocity so 60 Hz frames don't see a stale
-      // posX (which the previous frame's lerp already converged onto, leaving
-      // the visual stuttering when the next snapshot pops in).
-      tp.posX += tp.velX * dt;
+      // Pure visual lerp toward the latest server snapshot — no dead
+      // reckoning. Combining client-side integration with periodic snapshot
+      // overrides produced jitter where every 30 Hz tick "popped" the target
+      // forward. A slow lerp absorbs that snap so the camera glides instead.
       playerVisual.current.worldZ = lerp(
         playerVisual.current.worldZ,
         tp.posX,
@@ -677,16 +683,18 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       };
     }
     if (to) {
-      to.posX += to.velX * dt;
       opponentVisual.current.worldZ = lerp(
         opponentVisual.current.worldZ,
         to.posX,
         POSITION_LERP,
       );
       opponentVisual.current.guard = to.guard;
-      opponentVisual.current.bladeTipBladePlane = to.guard.active
-        ? to.guard.tip
-        : { x: 0, y: SHOULDER_Y + 0.6 };
+      // Live opponent blade tip — server now broadcasts it inside `state`
+      // (see `FighterNetState.bladeTip`). Falls back to the last known guard
+      // tip when the snapshot doesn't yet carry the field, then to a neutral
+      // chest-up resting pose if neither is available.
+      opponentVisual.current.bladeTipBladePlane = to.bladeTip
+        ?? (to.guard.active ? to.guard.tip : { x: 0, y: SHOULDER_Y + 0.6 });
       opponentVisual.current.stunned = haveServerClock && serverNow < to.stunUntil;
       opponentVisual.current.cooldown = haveServerClock && serverNow < to.attackCooldownUntil;
       opponentVisual.current.tradeImmune = false;

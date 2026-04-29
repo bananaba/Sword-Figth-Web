@@ -60,6 +60,13 @@ export class DuelRoomSession {
     player: freshFighter(INITIAL_PLAYER_POS),
     opponent: freshFighter(INITIAL_OPPONENT_POS),
   };
+  /**
+   * Latest blade-tip cursor reported by each side. Memory-only; the resolver
+   * doesn't read it (hit detection still uses the attack segment from the
+   * `attack` message). Broadcast inside `state` so the *opponent* can render
+   * the player's live cursor without us needing per-frame predictions.
+   */
+  private readonly bladeTips: Partial<Record<DuelSide, { x: number; y: number }>> = {};
   private match = initialMatch();
 
   constructor(
@@ -101,6 +108,10 @@ export class DuelRoomSession {
     }
     if (message.t === "guard") {
       this.handleGuard(socket, message);
+      return;
+    }
+    if (message.t === "tip") {
+      this.handleTip(socket, message);
       return;
     }
     if (message.t === "ready") {
@@ -147,6 +158,12 @@ export class DuelRoomSession {
       ...this.fighters[side],
       guard: message.guard,
     };
+  }
+
+  private handleTip(socket: RoomSocket, message: TipMessage): void {
+    const side = this.sideForSocket(socket);
+    if (!side) return;
+    this.bladeTips[side] = message.tip;
   }
 
   private handleReady(socket: RoomSocket, message: ReadyMessage): void {
@@ -320,8 +337,8 @@ export class DuelRoomSession {
     this.broadcast({
       t: "state",
       serverNow,
-      player: snapshotFighter(this.fighters.player),
-      opponent: snapshotFighter(this.fighters.opponent),
+      player: snapshotFighter(this.fighters.player, this.bladeTips.player),
+      opponent: snapshotFighter(this.fighters.opponent, this.bladeTips.opponent),
     });
   }
 
@@ -456,7 +473,12 @@ export class DuelRoomSession {
   }
 }
 
-type ClientMessage = HelloMessage | GuardMessage | ReadyMessage | AttackMessage;
+type ClientMessage =
+  | HelloMessage
+  | GuardMessage
+  | TipMessage
+  | ReadyMessage
+  | AttackMessage;
 
 interface HelloMessage {
   t: "hello";
@@ -466,6 +488,11 @@ interface HelloMessage {
 interface GuardMessage {
   t: "guard";
   guard: GuardSnapshot;
+}
+
+interface TipMessage {
+  t: "tip";
+  tip: { x: number; y: number };
 }
 
 interface ReadyMessage {
@@ -526,9 +553,13 @@ interface FighterNetState {
   stunUntil: number;
   attackCooldownUntil: number;
   counterUntil: number;
+  bladeTip?: { x: number; y: number };
 }
 
-function snapshotFighter(fighter: FighterState): FighterNetState {
+function snapshotFighter(
+  fighter: FighterState,
+  bladeTip?: { x: number; y: number },
+): FighterNetState {
   return {
     posX: fighter.posX,
     velX: fighter.velX,
@@ -536,6 +567,7 @@ function snapshotFighter(fighter: FighterState): FighterNetState {
     stunUntil: fighter.stunUntil,
     attackCooldownUntil: fighter.attackCooldownUntil,
     counterUntil: fighter.counterUntil,
+    bladeTip,
   };
 }
 
@@ -595,6 +627,10 @@ function parseClientMessage(rawMessage: string): ClientMessage | null {
   if (candidate.t === "guard") {
     const guard = parseGuard(candidate);
     return guard ? { t: "guard", guard } : null;
+  }
+  if (candidate.t === "tip") {
+    const tip = parseVec2(candidate.tip);
+    return tip ? { t: "tip", tip } : null;
   }
   if (candidate.t === "ready") {
     const now = parseNumber(candidate.now);

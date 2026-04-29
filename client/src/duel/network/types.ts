@@ -33,6 +33,12 @@ export interface FighterNetState {
   stunUntil: number;
   attackCooldownUntil: number;
   counterUntil: number;
+  /**
+   * Live blade-tip position in blade-plane coords. Driven by the player's
+   * cursor and broadcast at ~30 Hz alongside `state`. Optional because old
+   * server builds may not include it; clients fall back to guard.tip.
+   */
+  bladeTip?: Vec2;
 }
 
 export interface RatingChange {
@@ -116,6 +122,7 @@ export type ClientMessage =
     }
   | { t: "ready"; now: number }
   | { t: "guard"; guard: GuardSnapshot }
+  | { t: "tip"; tip: Vec2 }
   | {
       t: "attack";
       kind: AttackKind;
