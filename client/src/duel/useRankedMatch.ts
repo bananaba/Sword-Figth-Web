@@ -210,8 +210,14 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
   const phaseEndsAtServer = useRef<number>(0);
 
   // Local player attack ref so the blade animates immediately on input
-  // (server-roundtrip would feel laggy). Cleared after cooldownEndAt.
+  // (server-roundtrip would feel laggy). Cleared after cooldownEndAt OR
+  // earlier if the server didn't ack with an `impact` within roundtrip.
   const localPlayerAttack = useRef<AttackVisualState | null>(null);
+  // Set true when an `impact` for our side arrives (any outcome — hit,
+  // pierce, block, miss, rejected). Server broadcasts impact for every
+  // resolved attack, so absence within ~RTT means the request never
+  // reached fighting state (network drop or `not_fighting` error).
+  const localPlayerAttackConfirmed = useRef<boolean>(false);
 
   const hud = useRef<DuelHudState>({
     match: matchRef.current,
@@ -356,6 +362,12 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
           // flag tells `dispatchImpactFx` which side to anchor the impact
           // ring on; rewrite to our local frame.
           const attackerIsPlayer = msg.attackerSide === ourSide.current;
+          // Confirm our optimistic visual regardless of outcome — even
+          // miss/rejected proves the server saw and processed the attack,
+          // so the visual should run its full cooldown lifecycle.
+          if (attackerIsPlayer) {
+            localPlayerAttackConfirmed.current = true;
+          }
           const defenderTarget = attackerIsPlayer
             ? targetOpponent.current
             : targetPlayer.current;
@@ -498,6 +510,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
         end,
         kind: atk.kind,
       };
+      localPlayerAttackConfirmed.current = false;
       clientRef.current?.send({ t: "attack", event, now: Date.now() });
     },
     [],
@@ -562,18 +575,23 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
     void dt;
     const tp = targetPlayer.current;
     const to = targetOpponent.current;
-    const serverNow =
-      lastServerNow.current === 0
-        ? Date.now()
-        : lastServerNow.current + (now - lastServerNowAt.current);
+    // Server clock is anchored at the most recent `state` message. Before
+    // any state arrives, we have no calibration — comparing local Date.now()
+    // against absolute server timestamps (stunUntil, attackCooldownUntil)
+    // would produce arbitrary offsets, manifesting as huge spurious "stun
+    // remaining" values in the HUD. Use a sentinel and clamp downstream.
+    const haveServerClock = lastServerNow.current !== 0;
+    const serverNow = haveServerClock
+      ? lastServerNow.current + (now - lastServerNowAt.current)
+      : 0;
 
     // Position lerp toward latest server target. Visual posX is what the
     // camera follows; logical fighter mirror tracks the server snapshot.
     if (tp) {
       playerVisual.current.worldZ = lerp(playerVisual.current.worldZ, tp.posX, POSITION_LERP);
       playerVisual.current.guard = tp.guard;
-      playerVisual.current.stunned = serverNow < tp.stunUntil;
-      playerVisual.current.cooldown = serverNow < tp.attackCooldownUntil;
+      playerVisual.current.stunned = haveServerClock && serverNow < tp.stunUntil;
+      playerVisual.current.cooldown = haveServerClock && serverNow < tp.attackCooldownUntil;
       playerVisual.current.tradeImmune = false;
       playerVisual.current.speed = Math.abs(tp.velX);
       playerVisual.current.attack = localPlayerAttack.current;
@@ -593,8 +611,8 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       opponentVisual.current.bladeTipBladePlane = to.guard.active
         ? to.guard.tip
         : { x: 0, y: SHOULDER_Y + 0.6 };
-      opponentVisual.current.stunned = serverNow < to.stunUntil;
-      opponentVisual.current.cooldown = serverNow < to.attackCooldownUntil;
+      opponentVisual.current.stunned = haveServerClock && serverNow < to.stunUntil;
+      opponentVisual.current.cooldown = haveServerClock && serverNow < to.attackCooldownUntil;
       opponentVisual.current.tradeImmune = false;
       opponentVisual.current.speed = Math.abs(to.velX);
       opponentVisual.current.attack = null;
@@ -609,9 +627,23 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       };
     }
 
-    // Clear local optimistic attack once cooldown elapses.
-    if (localPlayerAttack.current && now >= localPlayerAttack.current.cooldownEndAt) {
-      localPlayerAttack.current = null;
+    // Clear local optimistic attack. Two terminating conditions:
+    //   1. Cooldown elapsed — normal lifecycle end (server acked OR didn't,
+    //      either way the visual has run its course).
+    //   2. Server never acked within REJECT_TIMEOUT_MS past the expected
+    //      impact moment — the attack never reached fighting state (network
+    //      stall or `not_fighting` error). Don't keep a phantom swing on
+    //      screen; clear early so the next input feels responsive.
+    const REJECT_TIMEOUT_MS = 220;
+    const a = localPlayerAttack.current;
+    if (a) {
+      const past = now >= a.cooldownEndAt;
+      const unacked =
+        !localPlayerAttackConfirmed.current && now >= a.impactAt + REJECT_TIMEOUT_MS;
+      if (past || unacked) {
+        localPlayerAttack.current = null;
+        localPlayerAttackConfirmed.current = false;
+      }
     }
 
     const phaseDeadline =
@@ -632,10 +664,14 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
 
     hud.current.match = matchRef.current;
     hud.current.phaseTimeRemainingMs = remaining;
-    hud.current.playerStunMs = tp ? Math.max(0, tp.stunUntil - serverNow) : 0;
-    hud.current.playerCooldownMs = tp ? Math.max(0, tp.attackCooldownUntil - serverNow) : 0;
-    hud.current.playerCounterMs = tp ? Math.max(0, tp.counterUntil - serverNow) : 0;
-    hud.current.opponentStunMs = to ? Math.max(0, to.stunUntil - serverNow) : 0;
+    hud.current.playerStunMs =
+      tp && haveServerClock ? Math.max(0, tp.stunUntil - serverNow) : 0;
+    hud.current.playerCooldownMs =
+      tp && haveServerClock ? Math.max(0, tp.attackCooldownUntil - serverNow) : 0;
+    hud.current.playerCounterMs =
+      tp && haveServerClock ? Math.max(0, tp.counterUntil - serverNow) : 0;
+    hud.current.opponentStunMs =
+      to && haveServerClock ? Math.max(0, to.stunUntil - serverNow) : 0;
     hud.current.playerWorldZ = playerVisual.current.worldZ;
     hud.current.opponentWorldZ = opponentVisual.current.worldZ;
 

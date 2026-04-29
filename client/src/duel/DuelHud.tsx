@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { DuelHudState, MatchState } from "./useDuelLoop";
 
 interface DuelHudProps {
@@ -50,9 +51,86 @@ export function DuelHud({
       <PlayerStatus state={s} />
       <OutcomeFlash outcome={s.lastOutcome} />
       <ControlsHint />
+      <HudAnnouncement
+        match={match}
+        playerName={playerName}
+        opponentName={opponentName}
+      />
     </>
   );
 }
+
+/**
+ * Off-screen live region so screen-reader users hear round/match results.
+ * Only announces on phase transitions — `useMemo` deps deliberately omit
+ * frame-level fields (phaseTimeRemainingMs, etc.) so the assistive layer
+ * isn't spammed during fighting frames. `aria-live="polite"` waits for the
+ * user to pause speaking before announcing, which fits a Bo3 cadence.
+ */
+function HudAnnouncement({
+  match,
+  playerName,
+  opponentName,
+}: {
+  match: MatchState;
+  playerName: string;
+  opponentName: string;
+}) {
+  const message = useMemo(() => {
+    switch (match.phase) {
+      case "countdown":
+        return `Round ${match.roundNumber} starting`;
+      case "roundOver": {
+        if (match.lastRoundWinner === "draw" || !match.lastRoundWinner) {
+          return `Round ${match.roundNumber}: draw`;
+        }
+        const winnerName =
+          match.lastRoundWinner === "player" ? playerName : opponentName;
+        const verb =
+          match.lastRoundReason === "ringout"
+            ? "knocked out the opponent"
+            : "won the round";
+        return `${winnerName} ${verb}`;
+      }
+      case "matchOver": {
+        if (!match.matchWinner) return "Match over";
+        const winnerName =
+          match.matchWinner === "player" ? playerName : opponentName;
+        return `Match over. ${winnerName} wins ${match.playerWins} to ${match.opponentWins}`;
+      }
+      default:
+        return "";
+    }
+  }, [
+    match.phase,
+    match.roundNumber,
+    match.lastRoundWinner,
+    match.lastRoundReason,
+    match.matchWinner,
+    match.playerWins,
+    match.opponentWins,
+    playerName,
+    opponentName,
+  ]);
+
+  return (
+    <div role="status" aria-live="polite" aria-atomic="true" style={SR_ONLY}>
+      {message}
+    </div>
+  );
+}
+
+const SR_ONLY: React.CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
 
 function TopBar({
   match,

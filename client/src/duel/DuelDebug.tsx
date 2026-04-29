@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { WeaponStats } from "@vibejam/shared";
 import { BODY_HALF_WIDTH, BODY_HEIGHT } from "./Fighter";
@@ -25,6 +25,16 @@ function HitboxWire({
     () => new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55 }),
     [color],
   );
+
+  // Dispose imperatively-built geometry/material when the debug panel
+  // toggles off — three.js doesn't auto-dispose `useMemo`-backed resources
+  // on unmount, only ones attached to JSX primitives by R3F.
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+      material.dispose();
+    };
+  }, [geometry, material]);
 
   useFrame(() => {
     if (!groupRef.current) return;

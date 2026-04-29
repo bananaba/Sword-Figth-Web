@@ -206,8 +206,9 @@
 | 11b 클라 네트워크 어댑터 | ✅ 완료 (2026-04-29, §9 Phase 11b) | 11a, 10a |
 | 11c 퍼시스턴스 + 리더보드 | ✅ 완료 (2026-04-29, §9 Phase 11c) | 11a |
 | 11.5 Sparks 파티클 | ✅ 완료 (2026-04-29, §9 Phase 11.5) | 10a |
+| **11.6 Audit pass + 신뢰성 패치** | **✅ 완료 (2026-04-29, §9 Phase 11.6, 9 patches, 45/45 tests)** | **11a–c, 11.5** |
 | 12 캐릭터 메시 통합 | ⬜ | **Quaternius + Mixamo 도착**, 9.5(rim 셰이더 패턴) |
-| 13 배포 | ⬜ | 11 |
+| 13 배포 | ⬜ | 11.6 |
 
 각 Phase 완료 시:
 1. `yarn workspace @vibejam/shared build && yarn workspace @vibejam/client typecheck` 통과

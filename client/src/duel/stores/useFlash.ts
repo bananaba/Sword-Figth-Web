@@ -42,11 +42,17 @@ export const useFlash = create<FlashState>((set, get) => ({
     // Anchor startAt to the *earlier* start so decay still completes by
     // newEnd; if there was no active envelope, start now.
     const newStart = cur.amount > 0 ? cur.startAt : now;
+    // Don't snap brightness back up when extending a still-decaying envelope:
+    // a fresh, smaller pulse arriving on top of a brighter one should NOT
+    // make the screen go dim, but it shouldn't reset to the original peak
+    // either — that would create a visible upward flicker. tick() will
+    // recompute on the next frame from (startAt, endAt, peak), so we only
+    // need to ensure the *current* frame doesn't dim below either value.
     set({
       startAt: newStart,
       endAt: newEnd,
       peak: newPeak,
-      amount: newPeak,
+      amount: Math.max(cur.amount, intensity),
     });
   },
   tick: (now) => {

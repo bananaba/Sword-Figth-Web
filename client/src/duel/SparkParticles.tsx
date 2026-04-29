@@ -286,6 +286,17 @@ export function SparkParticles() {
     if (u) u.value = seconds;
   });
 
+  // R3F auto-disposes geometry/material attached via JSX, but the pool here
+  // is built imperatively in `useMemo` so three.js never registers it for
+  // automatic teardown. Release GPU resources explicitly when the component
+  // unmounts (e.g. Solo↔Ranked toggle, leaveMatch).
+  useEffect(() => {
+    return () => {
+      pool.geometry.dispose();
+      pool.material.dispose();
+    };
+  }, [pool]);
+
   // R3F's `<points>` element accepts attached geometry/material.
   return (
     <points geometry={pool.geometry} material={pool.material} frustumCulled={false} />

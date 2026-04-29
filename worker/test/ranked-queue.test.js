@@ -37,14 +37,37 @@ test("RankedQueue matches two players inside the rating window", async () => {
   );
 
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    status: "matched",
-    roomId: "ranked-p1-p2",
-    players: [
-      { playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8" },
-      { playerId: "p2", name: "Ben", rating: 1120, saberColor: "#e879f9" },
-    ],
-  });
+  const body = await response.json();
+  assert.equal(body.status, "matched");
+  assert.match(
+    body.roomId,
+    /^ranked-p1-p2-[0-9a-z]+$/,
+    "roomId must include base36 timestamp suffix to keep DO instances unique per match",
+  );
+  assert.deepEqual(body.players, [
+    { playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8" },
+    { playerId: "p2", name: "Ben", rating: 1120, saberColor: "#e879f9" },
+  ]);
+});
+
+test("RankedQueue mints a fresh roomId every match between the same pair", async () => {
+  const a = { playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8" };
+  const b = { playerId: "p2", name: "Ben", rating: 1000, saberColor: "#e879f9" };
+
+  const first = await new RankedQueue({}, {}).fetch(postMatchmake(a));
+  void first;
+
+  const queue = new RankedQueue({}, {});
+  await queue.fetch(postMatchmake(a));
+  const r1 = await (await queue.fetch(postMatchmake(b))).json();
+  // Force a measurable wall-clock gap so Date.now()-based suffixes differ.
+  await new Promise((r) => setTimeout(r, 5));
+  await queue.fetch(postMatchmake(a));
+  const r2 = await (await queue.fetch(postMatchmake(b))).json();
+
+  assert.equal(r1.status, "matched");
+  assert.equal(r2.status, "matched");
+  assert.notEqual(r1.roomId, r2.roomId, "consecutive matches must yield distinct DO names");
 });
 
 test("RankedQueue rejects malformed requests", async () => {
@@ -54,4 +77,55 @@ test("RankedQueue rejects malformed requests", async () => {
 
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "invalid_matchmake_request" });
+});
+
+function memoryQueueStorage() {
+  const map = new Map();
+  return {
+    map,
+    async get(key) {
+      return map.has(key) ? structuredClone(map.get(key)) : undefined;
+    },
+    async put(key, value) {
+      map.set(key, structuredClone(value));
+    },
+  };
+}
+
+test("RankedQueue persists the waiting list across DO restarts", async () => {
+  // Simulate a Cloudflare Worker idle eviction: same storage backing, fresh
+  // RankedQueue instance the second time around (in-memory `waiting` is gone).
+  const storage = memoryQueueStorage();
+  const before = new RankedQueue({ storage }, {});
+
+  await before.fetch(
+    postMatchmake({ playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8" }),
+  );
+
+  const after = new RankedQueue({ storage }, {});
+  const response = await after.fetch(
+    postMatchmake({ playerId: "p2", name: "Ben", rating: 1100, saberColor: "#e879f9" }),
+  );
+
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.status, "matched", "second player should match the persisted first");
+  assert.match(body.roomId, /^ranked-p1-p2-/);
+});
+
+test("RankedQueue dedupes the same playerId polling repeatedly", async () => {
+  // Client polls `/matchmake` every 2s while in queue. Without dedupe each
+  // poll would push a duplicate entry, eventually allowing self-match when
+  // the rating window catches our own previous entry.
+  const queue = new RankedQueue({}, {});
+  const me = { playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8" };
+
+  await queue.fetch(postMatchmake(me));
+  await queue.fetch(postMatchmake(me));
+  const last = await queue.fetch(postMatchmake(me));
+
+  assert.equal(last.status, 200);
+  const body = await last.json();
+  assert.equal(body.status, "queued");
+  assert.equal(body.queueSize, 1, "duplicate polls must not stack");
 });

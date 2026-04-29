@@ -63,8 +63,16 @@ export async function postMatchmake(
  * re-enters the queue, but the queue dedupes by playerId on the worker side
  * (it just updates the existing entry's position).
  *
+ * Network failures (offline blip, worker cold start, transient 5xx) trigger
+ * an exponential backoff up to MAX_BACKOFF_MS instead of bailing — the user
+ * will see "queued" longer rather than a hard error mid-search. Aborts and
+ * 4xx responses still throw immediately.
+ *
  * Returns the matched roomId. Throws on abort.
  */
+const RETRY_BASE_MS = 500;
+const MAX_BACKOFF_MS = 8000;
+
 export async function pollUntilMatched(
   workerUrl: string,
   req: MatchmakeRequest,
@@ -72,12 +80,33 @@ export async function pollUntilMatched(
   signal: AbortSignal,
   intervalMs = 2000,
 ): Promise<string> {
+  let consecutiveFailures = 0;
   while (true) {
     if (signal.aborted) throw new Error("matchmake_aborted");
-    const result = await postMatchmake(workerUrl, req, signal);
-    if (result.status === "matched") return result.roomId;
-    onQueued(result.queueSize);
-    await sleep(intervalMs, signal);
+    try {
+      const result = await postMatchmake(workerUrl, req, signal);
+      consecutiveFailures = 0;
+      if (result.status === "matched") return result.roomId;
+      onQueued(result.queueSize);
+      await sleep(intervalMs, signal);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Aborts must surface immediately — the caller is unmounting.
+      if (message === "matchmake_aborted" || signal.aborted) {
+        throw err;
+      }
+      // 4xx is a programmer error (bad payload), not a transient glitch.
+      // 5xx and network failures are retryable.
+      if (/^matchmake_http_4\d\d$/.test(message)) {
+        throw err;
+      }
+      consecutiveFailures += 1;
+      const backoff = Math.min(
+        MAX_BACKOFF_MS,
+        RETRY_BASE_MS * 2 ** Math.min(consecutiveFailures - 1, 6),
+      );
+      await sleep(backoff, signal);
+    }
   }
 }
 
