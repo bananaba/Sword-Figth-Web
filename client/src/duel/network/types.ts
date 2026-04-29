@@ -121,7 +121,7 @@ export type ClientMessage =
       };
     }
   | { t: "ready"; now: number }
-  | { t: "guard"; guard: GuardSnapshot }
+  | { t: "guard"; active: boolean; grip: Vec2; tip: Vec2 }
   | { t: "tip"; tip: Vec2 }
   | {
       t: "attack";

@@ -607,7 +607,15 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
     playerVisual.current.guard = guard;
     if (now - lastGuardSentAt.current >= GUARD_SEND_INTERVAL_MS) {
       lastGuardSentAt.current = now;
-      clientRef.current?.send({ t: "guard", guard });
+      // Server's `parseGuard` reads active/grip/tip from the top-level
+      // message object — flatten to match the wire format (same pattern as
+      // the `attack` message).
+      clientRef.current?.send({
+        t: "guard",
+        active: guard.active,
+        grip: guard.grip,
+        tip: guard.tip,
+      });
     }
   }, []);
 
