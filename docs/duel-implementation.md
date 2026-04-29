@@ -266,9 +266,9 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 - [ ] **무기 종류** — 차지 검 / 쌍검 / Timely Block (현재 BASIC_SWORD 1종)
 
 ### 멀티플레이 / 랭크 (Day 2)
-- [ ] **사설방 (Colyseus DuelRoom)** — `server/src/rooms/GameRoom`을 `DuelRoom`으로 리팩토링. shared resolver 재사용. 사설방 코드 생성/입장.
+- [ ] **사설방 + 자동 토너먼트 (Colyseus DuelRoom)** — `server/src/rooms/GameRoom`을 `DuelRoom`으로 리팩토링. shared resolver 재사용. 사설방 코드 생성/입장. **방 정원 2/4/8/16인 옵션 → 자동 single-elimination 브래킷** (2인=1매치, 4인=3매치, 8인=7매치, 16인=15매치). 매치 종료 시 승자만 다음 라운드 자동 진입.
 - [ ] **권위 서버 모델** — 클라는 입력만 송신, 서버가 resolveAttack, 결과 브로드캐스트
-- [ ] **랭크 / MMR** — 단순 ELO (K=32) + 점수 ±200 큐. SQLite 또는 in-memory.
+- [ ] **랭크 / MMR** — 단순 ELO (K=32) + 점수 ±200 큐. SQLite 또는 in-memory. 사설방과 별도의 1대1 자동 매치메이킹.
 - [ ] **임팩트 시점 동기화** — 네트워크 지연 보상
 
 ### 배포 / 컴플라이언스

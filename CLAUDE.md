@@ -28,7 +28,7 @@
 - Phase 7 완료: 카메라 추격, 검·가드 캐릭터 동기화, 스턴 시스템 통합, 라이트세이버 테마 결정
 - **다음 작업**: Step 1 = postprocessing + Bloom 도입 (`@react-three/postprocessing`)
 - **Day 1 잔여 시각 P0**: Bloom → 검 emissive HDR → 트레일 → 임팩트 링/셰이크 → KO splash → 물 셰이더
-- **Day 2 작업**: Colyseus DuelRoom (사설방) → 랭크/MMR → Vercel 배포
+- **Day 2 작업**: Colyseus DuelRoom (**사설방 2/4/8/16인 자동 토너먼트 브래킷 포함**) → 랭크/MMR (1대1 자동 매치) → Vercel 배포
 
 ## 코드 작성 규칙
 
