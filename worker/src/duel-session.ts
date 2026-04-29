@@ -12,6 +12,7 @@ import {
 } from "@vibejam/shared";
 import * as Combat from "@vibejam/shared";
 import { parseMatchmakePlayer, type MatchmakePlayer } from "./protocol.js";
+import { applyEloResult } from "./rating.js";
 
 export type DuelSide = "player" | "opponent";
 type MatchPhase = "waiting" | "countdown" | "fighting" | "roundOver" | "matchOver";
@@ -51,6 +52,10 @@ export class DuelRoomSession {
       this.sockets.splice(index, 1);
       this.broadcastRoomState();
     }
+  }
+
+  hasConnections(): boolean {
+    return this.sockets.length > 0;
   }
 
   handleMessage(socket: RoomSocket, rawMessage: string): void {
@@ -308,6 +313,7 @@ export class DuelRoomSession {
 
   private endMatch(): void {
     const winner = this.match.playerWins > this.match.opponentWins ? "player" : "opponent";
+    const ratings = this.matchRatingResult(winner);
     this.match = {
       ...this.match,
       phase: "matchOver",
@@ -317,11 +323,41 @@ export class DuelRoomSession {
       winner,
       playerWins: this.match.playerWins,
       opponentWins: this.match.opponentWins,
+      ratings,
     });
+  }
+
+  private matchRatingResult(winner: Exclude<RoundWinner, "draw">): MatchRatings | null {
+    const player = this.playerForSide("player");
+    const opponent = this.playerForSide("opponent");
+    if (!player || !opponent) return null;
+
+    const result = applyEloResult({
+      playerRating: player.rating,
+      opponentRating: opponent.rating,
+      score: winner === "player" ? 1 : 0,
+    });
+
+    return {
+      player: {
+        before: player.rating,
+        after: result.nextPlayerRating,
+        delta: result.playerDelta,
+      },
+      opponent: {
+        before: opponent.rating,
+        after: result.nextOpponentRating,
+        delta: result.opponentDelta,
+      },
+    };
   }
 
   private sideForSocket(socket: RoomSocket): DuelSide | null {
     return this.sockets.find((entry) => entry.socket === socket)?.player?.side ?? null;
+  }
+
+  private playerForSide(side: DuelSide): RoomPlayer | null {
+    return this.sockets.find((entry) => entry.player?.side === side)?.player ?? null;
   }
 }
 
@@ -368,6 +404,17 @@ const FRICTION = 5.0;
 
 type RoundWinner = "player" | "opponent" | "draw";
 type RoundReason = "ringout" | "timeout";
+
+interface RatingChange {
+  before: number;
+  after: number;
+  delta: number;
+}
+
+interface MatchRatings {
+  player: RatingChange;
+  opponent: RatingChange;
+}
 
 interface ServerMatchState {
   phase: MatchPhase;

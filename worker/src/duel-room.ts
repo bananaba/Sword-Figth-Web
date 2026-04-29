@@ -13,11 +13,20 @@ type WebSocketPairConstructor = new () => {
   1: CloudflareWebSocket;
 };
 
+interface DurableObjectStateLike {
+  storage?: {
+    setAlarm(value: number): void | Promise<void>;
+  };
+}
+
+const TICK_HZ = 30;
+const TICK_MS = 1000 / TICK_HZ;
+
 export class DuelRoom {
   private readonly session = new DuelRoomSession("duel-room");
 
   constructor(
-    private readonly state: unknown,
+    private readonly state: DurableObjectStateLike,
     private readonly env: unknown,
   ) {
     void this.state;
@@ -38,6 +47,7 @@ export class DuelRoom {
     const server = pair[1];
     server.accept();
     this.session.attach(server);
+    this.scheduleNextTick();
     server.addEventListener("message", (event) => {
       if (typeof event.data === "string") {
         this.session.handleMessage(server, event.data);
@@ -50,6 +60,16 @@ export class DuelRoom {
     server.addEventListener("error", detach);
 
     return webSocketResponse(client);
+  }
+
+  async alarm(): Promise<void> {
+    if (!this.session.hasConnections()) return;
+    this.session.tick(Date.now(), 1 / TICK_HZ);
+    await this.scheduleNextTick();
+  }
+
+  private async scheduleNextTick(): Promise<void> {
+    await this.state.storage?.setAlarm(Date.now() + TICK_MS);
   }
 }
 

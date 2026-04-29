@@ -313,6 +313,10 @@ test("DuelRoomSession ends the match after two round wins", () => {
     winner: "player",
     playerWins: 2,
     opponentWins: 0,
+    ratings: {
+      player: { before: 1000, after: 1021, delta: 21 },
+      opponent: { before: 1120, after: 1099, delta: -21 },
+    },
   });
   assert.deepEqual(second.sent.at(-1), first.sent.at(-1));
 });

@@ -51,6 +51,32 @@ test("DuelRoom accepts WebSocket upgrades and connects them to the session", asy
   }
 });
 
+test("DuelRoom alarm ticks the session and schedules the next tick while sockets are connected", async () => {
+  const storageCalls = [];
+  const room = new DuelRoom({
+    storage: {
+      setAlarm(value) {
+        storageCalls.push(value);
+      },
+    },
+  }, {});
+  room["session"] = {
+    hasConnections() {
+      return true;
+    },
+    tick(now, dt) {
+      this.lastTick = { now, dt };
+    },
+  };
+
+  await room.alarm();
+
+  assert.equal(room["session"].lastTick.dt, 1 / 30);
+  assert.equal(typeof room["session"].lastTick.now, "number");
+  assert.equal(storageCalls.length, 1);
+  assert.equal(typeof storageCalls[0], "number");
+});
+
 class FakeWebSocket {
   constructor() {
     this.accepted = false;
