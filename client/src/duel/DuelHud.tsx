@@ -248,6 +248,36 @@ function FlagDots({
   );
 }
 
+function BigDots({
+  count,
+  color,
+  reverse = false,
+}: {
+  count: number;
+  color: string;
+  reverse?: boolean;
+}) {
+  const dots = [0, 1].map((i) => i < count);
+  if (reverse) dots.reverse();
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      {dots.map((on, i) => (
+        <div
+          key={i}
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            background: on ? color : "transparent",
+            border: `2px solid ${on ? color : "rgba(255,255,255,0.2)"}`,
+            boxShadow: on ? `0 0 16px ${color}` : "none",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function PhaseOverlay({
   match,
   phaseRemainingMs,
@@ -367,17 +397,39 @@ function PhaseOverlay({
         </div>
         <div
           style={{
-            fontSize: 32,
-            marginTop: 16,
-            fontFamily: "ui-monospace, monospace",
-            fontVariantNumeric: "tabular-nums",
-            color: "#cbd5e1",
-            letterSpacing: 4,
+            display: "flex",
+            alignItems: "center",
+            gap: 24,
+            marginTop: 18,
           }}
         >
-          <span style={{ color: playerAccent }}>{match.playerWins}</span>
-          <span style={{ opacity: 0.5, margin: "0 12px" }}>–</span>
-          <span style={{ color: opponentAccent }}>{match.opponentWins}</span>
+          <BigDots count={match.playerWins} color={playerAccent} />
+          <span
+            style={{
+              fontSize: 28,
+              fontFamily: "ui-monospace, monospace",
+              opacity: 0.5,
+              color: "#cbd5e1",
+            }}
+          >
+            VS
+          </span>
+          <BigDots
+            count={match.opponentWins}
+            color={opponentAccent}
+            reverse
+          />
+        </div>
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            letterSpacing: 3,
+            color: "#64748b",
+            textTransform: "uppercase",
+          }}
+        >
+          best of 3
         </div>
         <button
           onClick={onResetMatch}

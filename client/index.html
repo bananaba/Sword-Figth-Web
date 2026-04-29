@@ -11,7 +11,45 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
-    <div id="root"></div>
+    <style>
+      .pre-react-loader {
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(ellipse at center, #0f1f3a 0%, #050913 70%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: ui-monospace, monospace;
+        color: #7dd3fc;
+        z-index: 1;
+      }
+      .pre-react-loader__title {
+        font-size: clamp(28px, 5vw, 48px);
+        font-weight: 900;
+        letter-spacing: 0.18em;
+        text-shadow: 0 0 28px #38bdf8, 0 0 64px #38bdf8;
+        animation: pre-react-pulse 1.6s ease-in-out infinite;
+      }
+      .pre-react-loader__sub {
+        margin-top: 18px;
+        font-size: 11px;
+        letter-spacing: 0.4em;
+        color: #475569;
+        text-transform: uppercase;
+        font-family: ui-sans-serif, system-ui;
+      }
+      @keyframes pre-react-pulse {
+        0%, 100% { opacity: 0.55; }
+        50% { opacity: 1; }
+      }
+    </style>
+    <div id="root">
+      <div class="pre-react-loader" aria-hidden="true">
+        <div class="pre-react-loader__title">CHAMBARA DUEL</div>
+        <div class="pre-react-loader__sub">drawing your blade…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
 
     <!-- Vibe Jam 2026 official tracking widget (REQUIRED for submission) -->
