@@ -1,10 +1,12 @@
 import type { Env } from "./bindings.js";
 import { corsPreflight, json } from "./http.js";
 export { DuelRoom } from "./duel-room.js";
+export { Leaderboard } from "./leaderboard.js";
 export { RankedQueue } from "./ranked-queue.js";
 
 const SERVICE_NAME = "chambara-ranked-worker";
 const GLOBAL_QUEUE_NAME = "global";
+const GLOBAL_LEADERBOARD_NAME = "global";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -18,8 +20,15 @@ export default {
       return json({ ok: true, service: SERVICE_NAME });
     }
 
-    if (request.method === "GET" && url.pathname === "/leaderboard") {
-      return json({ players: [] });
+    if (
+      (request.method === "GET" && url.pathname === "/leaderboard") ||
+      (request.method === "GET" && url.pathname === "/me")
+    ) {
+      if (!env.LEADERBOARD) {
+        return json({ error: "leaderboard_binding_missing" }, { status: 500 });
+      }
+      const id = env.LEADERBOARD.idFromName(GLOBAL_LEADERBOARD_NAME);
+      return env.LEADERBOARD.get(id).fetch(request);
     }
 
     if (request.method === "POST" && url.pathname === "/matchmake") {

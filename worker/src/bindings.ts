@@ -10,4 +10,6 @@ export interface DurableObjectNamespace {
 export interface Env {
   RANKED_QUEUE: DurableObjectNamespace;
   DUEL_ROOM?: DurableObjectNamespace;
+  /** Persistent player ratings + W/L/D ledger (Phase 11c). */
+  LEADERBOARD?: DurableObjectNamespace;
 }

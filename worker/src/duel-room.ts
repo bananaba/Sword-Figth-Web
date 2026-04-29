@@ -1,5 +1,10 @@
 import { json } from "./http.js";
-import { DuelRoomSession, type RoomSocket } from "./duel-session.js";
+import {
+  DuelRoomSession,
+  type MatchOverEvent,
+  type RoomSocket,
+} from "./duel-session.js";
+import type { ResultRequest } from "./leaderboard.js";
 
 interface CloudflareWebSocket extends RoomSocket {
   accept(): void;
@@ -19,18 +24,54 @@ interface DurableObjectStateLike {
   };
 }
 
+interface LeaderboardEnv {
+  LEADERBOARD?: {
+    idFromName(name: string): unknown;
+    get(id: unknown): { fetch(request: Request): Promise<Response> };
+  };
+}
+
 const TICK_HZ = 30;
 const TICK_MS = 1000 / TICK_HZ;
+const GLOBAL_LEADERBOARD_NAME = "global";
 
 export class DuelRoom {
-  private readonly session = new DuelRoomSession("duel-room");
+  private readonly session: DuelRoomSession;
 
   constructor(
     private readonly state: DurableObjectStateLike,
-    private readonly env: unknown,
+    private readonly env: LeaderboardEnv,
   ) {
-    void this.state;
-    void this.env;
+    this.session = new DuelRoomSession("duel-room", {
+      onMatchOver: (event) => {
+        // Forward W/L/D + new ratings to the persistent leaderboard DO.
+        // Fire-and-forget: a leaderboard write failure must not block the
+        // match-end broadcast or wedge the room.
+        void this.recordMatchResult(event);
+      },
+    });
+  }
+
+  private async recordMatchResult(event: MatchOverEvent): Promise<void> {
+    const lb = this.env.LEADERBOARD;
+    if (!lb) return;
+    const body: ResultRequest = {
+      player: event.player,
+      opponent: event.opponent,
+      at: event.at,
+    };
+    try {
+      const id = lb.idFromName(GLOBAL_LEADERBOARD_NAME);
+      await lb.get(id).fetch(
+        new Request("https://internal/result", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+    } catch {
+      /* swallow — match-over UX must not depend on persistence */
+    }
   }
 
   async fetch(request: Request): Promise<Response> {

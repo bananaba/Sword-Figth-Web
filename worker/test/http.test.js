@@ -41,6 +41,26 @@ function createEnv(overrides = {}) {
         };
       },
     },
+    LEADERBOARD: {
+      idFromName(name) {
+        return name;
+      },
+      get(id) {
+        return {
+          async fetch(request) {
+            const url = new URL(request.url);
+            return new Response(
+              JSON.stringify({
+                forwardedTo: id,
+                method: request.method,
+                pathname: url.pathname,
+              }),
+              { headers: { "content-type": "application/json" } },
+            );
+          },
+        };
+      },
+    },
     ...overrides,
   };
 }
@@ -53,11 +73,38 @@ test("GET /healthz returns ok JSON", async () => {
   assert.deepEqual(await response.json(), { ok: true, service: "chambara-ranked-worker" });
 });
 
-test("GET /leaderboard returns an empty leaderboard envelope", async () => {
+test("GET /leaderboard forwards to the global Leaderboard object", async () => {
   const response = await worker.fetch(new Request("https://worker.test/leaderboard"), createEnv());
 
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { players: [] });
+  assert.deepEqual(await response.json(), {
+    forwardedTo: "global",
+    method: "GET",
+    pathname: "/leaderboard",
+  });
+});
+
+test("GET /me forwards to the global Leaderboard object", async () => {
+  const response = await worker.fetch(
+    new Request("https://worker.test/me?playerId=p1"),
+    createEnv(),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    forwardedTo: "global",
+    method: "GET",
+    pathname: "/me",
+  });
+});
+
+test("GET /leaderboard 500s if the LEADERBOARD binding is missing", async () => {
+  const env = createEnv();
+  env.LEADERBOARD = undefined;
+  const response = await worker.fetch(new Request("https://worker.test/leaderboard"), env);
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: "leaderboard_binding_missing" });
 });
 
 test("POST /matchmake forwards the request to the global RankedQueue object", async () => {

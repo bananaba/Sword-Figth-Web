@@ -5,9 +5,14 @@ compatibility_date = "2026-04-29"
 [durable_objects]
 bindings = [
   { name = "RANKED_QUEUE", class_name = "RankedQueue" },
-  { name = "DUEL_ROOM", class_name = "DuelRoom" }
+  { name = "DUEL_ROOM", class_name = "DuelRoom" },
+  { name = "LEADERBOARD", class_name = "Leaderboard" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RankedQueue", "DuelRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Leaderboard"]

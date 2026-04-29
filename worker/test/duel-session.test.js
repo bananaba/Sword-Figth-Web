@@ -321,6 +321,33 @@ test("DuelRoomSession ends the match after two round wins", () => {
   assert.deepEqual(second.sent.at(-1), first.sent.at(-1));
 });
 
+test("DuelRoomSession fires onMatchOver with W/L outcomes for Leaderboard write", () => {
+  const events = [];
+  const session = new DuelRoomSession("ranked-p1-p2", {
+    onMatchOver: (event) => events.push(event),
+  });
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  startFighting(session, first, second);
+  forcePlayerRingoutWin(session, first);
+  session.tick(10500);
+  session.tick(13500);
+  forcePlayerRingoutWin(session, first, 13600);
+
+  session.tick(16000);
+
+  assert.equal(events.length, 1);
+  const event = events[0];
+  assert.equal(event.player.playerId, "p1");
+  assert.equal(event.player.outcome, "win");
+  assert.equal(event.player.rating, 1021); // ratings.player.after
+  assert.equal(event.opponent.playerId, "p2");
+  assert.equal(event.opponent.outcome, "loss");
+  assert.equal(event.opponent.rating, 1099);
+  assert.equal(event.at, 16000);
+});
+
 test("DuelRoomSession broadcasts state every fighting tick", () => {
   const session = new DuelRoomSession("ranked-p1-p2");
   const first = fakeSocket();

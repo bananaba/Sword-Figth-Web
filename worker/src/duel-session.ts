@@ -31,6 +31,28 @@ interface AttachedSocket {
   player: RoomPlayer | null;
 }
 
+export interface MatchOverEvent {
+  /** Server-frame slot called "player" (NOT "winner") — first-joiner. */
+  player: {
+    playerId: string;
+    name: string;
+    rating: number;
+    outcome: "win" | "loss" | "draw";
+  };
+  opponent: {
+    playerId: string;
+    name: string;
+    rating: number;
+    outcome: "win" | "loss" | "draw";
+  };
+  at: number;
+}
+
+export interface DuelRoomSessionOptions {
+  /** Fired after match_over broadcast. Used by DO to write Leaderboard. */
+  onMatchOver?: (event: MatchOverEvent) => void;
+}
+
 export class DuelRoomSession {
   private readonly sockets: AttachedSocket[] = [];
   private readonly ready = new Set<DuelSide>();
@@ -40,7 +62,10 @@ export class DuelRoomSession {
   };
   private match = initialMatch();
 
-  constructor(private readonly roomId: string) {}
+  constructor(
+    private readonly roomId: string,
+    private readonly options: DuelRoomSessionOptions = {},
+  ) {}
 
   attach(socket: RoomSocket): void {
     this.sockets.push({ socket, player: null });
@@ -213,7 +238,7 @@ export class DuelRoomSession {
   tick(now: number, dtSeconds = 0): void {
     if (this.match.phase === "roundOver" && now >= this.match.phaseEndsAt) {
       if (this.match.playerWins >= WINS_TO_TAKE_MATCH || this.match.opponentWins >= WINS_TO_TAKE_MATCH) {
-        this.endMatch();
+        this.endMatch(now);
         return;
       }
       this.resetRoundFighters();
@@ -322,7 +347,7 @@ export class DuelRoomSession {
     });
   }
 
-  private endMatch(): void {
+  private endMatch(now: number = Date.now()): void {
     const winner = this.match.playerWins > this.match.opponentWins ? "player" : "opponent";
     const ratings = this.matchRatingResult(winner);
     this.match = {
@@ -336,6 +361,32 @@ export class DuelRoomSession {
       opponentWins: this.match.opponentWins,
       ratings,
     });
+    // Persistence hook — fed to Leaderboard DO via DuelRoom. Skipped if
+    // either side never finished `hello` (rare; would mean a DO crash
+    // mid-match) since we have no rating to record.
+    const playerInfo = this.playerForSide("player");
+    const opponentInfo = this.playerForSide("opponent");
+    if (this.options.onMatchOver && playerInfo && opponentInfo && ratings) {
+      const playerOutcome: "win" | "loss" =
+        winner === "player" ? "win" : "loss";
+      const opponentOutcome: "win" | "loss" =
+        winner === "opponent" ? "win" : "loss";
+      this.options.onMatchOver({
+        player: {
+          playerId: playerInfo.playerId,
+          name: playerInfo.name,
+          rating: ratings.player.after,
+          outcome: playerOutcome,
+        },
+        opponent: {
+          playerId: opponentInfo.playerId,
+          name: opponentInfo.name,
+          rating: ratings.opponent.after,
+          outcome: opponentOutcome,
+        },
+        at: now,
+      });
+    }
   }
 
   private matchRatingResult(winner: Exclude<RoundWinner, "draw">): MatchRatings | null {
