@@ -30,16 +30,21 @@ const MAX_NAME_LEN = 16;
 const DEFAULT_NAME = "Duelist";
 const DEFAULT_SABER = "#38bdf8";
 
+export type DuelMode = "solo" | "ranked";
+
 export interface Identity {
   name: string;
   saberColor: string;
+  /** Mode is chosen each session — not persisted. */
+  mode: DuelMode;
 }
 
 /**
  * Read stored identity if both fields exist; otherwise return `null` so the
- * caller knows to mount the title screen.
+ * caller knows to mount the title screen. Mode always starts unset so the
+ * player chooses Solo vs Ranked each time.
  */
-export function readStoredIdentity(): Identity | null {
+export function readStoredIdentity(): Omit<Identity, "mode"> | null {
   try {
     const name = localStorage.getItem(NAME_KEY);
     const saber = localStorage.getItem(SABER_KEY);
@@ -73,7 +78,7 @@ export function TitleScreen({ onStart }: TitleScreenProps) {
     return DEFAULT_SABER;
   });
 
-  const handleStart = (): void => {
+  const handleStart = (mode: DuelMode): void => {
     const trimmed = name.trim().slice(0, MAX_NAME_LEN);
     const finalName = trimmed || DEFAULT_NAME;
     try {
@@ -82,7 +87,7 @@ export function TitleScreen({ onStart }: TitleScreenProps) {
     } catch {
       /* localStorage may be disabled — proceed without persisting */
     }
-    onStart({ name: finalName, saberColor });
+    onStart({ name: finalName, saberColor, mode });
   };
 
   return (
@@ -149,7 +154,7 @@ export function TitleScreen({ onStart }: TitleScreenProps) {
             placeholder={DEFAULT_NAME}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleStart();
+              if (e.key === "Enter") handleStart("solo");
             }}
             style={{
               padding: "10px 12px",
@@ -208,25 +213,45 @@ export function TitleScreen({ onStart }: TitleScreenProps) {
           </div>
         </div>
 
-        <button
-          onClick={handleStart}
-          style={{
-            marginTop: 8,
-            padding: "12px 20px",
-            fontSize: 16,
-            fontWeight: 800,
-            letterSpacing: 2,
-            color: "#0b1424",
-            background: saberColor,
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-            textTransform: "uppercase",
-            boxShadow: `0 0 24px ${saberColor}`,
-          }}
-        >
-          Start Duel
-        </button>
+        <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+          <button
+            onClick={() => handleStart("solo")}
+            style={{
+              flex: 1,
+              padding: "12px 16px",
+              fontSize: 14,
+              fontWeight: 800,
+              letterSpacing: 2,
+              color: "#e2e8f0",
+              background: "rgba(2,6,23,0.6)",
+              border: `1px solid ${saberColor}`,
+              borderRadius: 8,
+              cursor: "pointer",
+              textTransform: "uppercase",
+            }}
+          >
+            Solo (vs AI)
+          </button>
+          <button
+            onClick={() => handleStart("ranked")}
+            style={{
+              flex: 1,
+              padding: "12px 16px",
+              fontSize: 14,
+              fontWeight: 800,
+              letterSpacing: 2,
+              color: "#0b1424",
+              background: saberColor,
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              textTransform: "uppercase",
+              boxShadow: `0 0 24px ${saberColor}`,
+            }}
+          >
+            Ranked Online
+          </button>
+        </div>
       </div>
 
       <div

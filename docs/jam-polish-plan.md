@@ -84,7 +84,7 @@
 | 27 | ELO(K=32) 산출 | ✅ 11a (matchOver payload) | rating 영속화 + Top 20 leaderboard는 Phase 11c |
 | 28 | 서버 outcome 브로드캐스트 (`impact` 메시지) | ✅ 11a | 클라 흡수는 Phase 11b + 10a 디스패처 |
 | 29 | 30Hz `state` broadcast (fighter posX/velX/guard/stun/cooldown) | ✅ 11a | 이동 입력 채널 없음 — outcome-driven movement (`applyOutcome` velX → `tickFighter` 적분) |
-| **11b** | **클라 네트워크 어댑터** | ⬜ 다음 작업 | `useRankedMatch` 훅, WS 연결, `state` 인터폴레이션 버퍼, `impact` → `dispatchImpactFx` |
+| **11b** | **클라 네트워크 어댑터** | ✅ 완료 | `useRankedMatch` 훅 + `network/{types,matchmake,RankedClient}` — TitleScreen에 Solo/Ranked 토글, /matchmake 폴링, WS hello/ready/guard/attack, `state` posX lerp 인터폴레이션, `impact` → `dispatchImpactFx`, RankedOverlay (queue/connecting/match_over) |
 | **11c** | **퍼시스턴스 + 리더보드** | ⬜ | DO SQLite로 `playerId → rating, wins, losses, draws`. matchOver 시 write, `/leaderboard` Top 20 read, `/me` 조회 |
 | **11d** | **배포** | ⬜ | `wrangler deploy` + 클라 env 분기 (Worker URL) — Phase 13에서 |
 
@@ -203,7 +203,7 @@
 | 10b 시간/공간 효과 | ✅ 완료 (2026-04-29, §9 Phase 10b) | 10a |
 | 9 Audio | ⬜ | **SFX 12개 도착** |
 | 11a Cloudflare 권위 룸 + state broadcast + CORS | ✅ 완료 (2026-04-29, `worker/`, 30/30 tests) | 없음 |
-| 11b 클라 네트워크 어댑터 | ⬜ | 11a, (10a 디스패처 권장) |
+| 11b 클라 네트워크 어댑터 | ✅ 완료 (2026-04-29, §9 Phase 11b) | 11a, 10a |
 | 11c 퍼시스턴스 + 리더보드 | ⬜ | 11a |
 | 11.5 Sparks 파티클 | ⬜ | 10a |
 | 12 캐릭터 메시 통합 | ⬜ | **Quaternius + Mixamo 도착**, 9.5(rim 셰이더 패턴) |
