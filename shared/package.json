@@ -16,6 +16,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "yarn build && node --test test/*.test.js",
     "clean": "rimraf dist"
   },
   "devDependencies": {

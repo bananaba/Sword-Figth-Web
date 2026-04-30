@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PLASMA_BLADE,
   type AttackEvent,
+  createBladeTipPredictor,
   type FighterState,
   type GuardSnapshot,
+  updateBladeTipPrediction,
   type Vec2,
   type WeaponStats,
 } from "@vibejam/shared";
@@ -118,13 +120,6 @@ export interface UseRankedMatchResult extends UseDuelLoop {
 // = snappier (more raw teleports), lower = smoother (more visual lag).
 // 0.32 hides 30Hz state quantization while keeping reactions feel fast.
 const POSITION_LERP = 0.18;
-/**
- * Blade-tip lerp: cursor moves much faster than knockback drift, so we
- * track it more aggressively. Still <1.0 so 30 Hz tip snapshots interpolate
- * into a glide instead of teleporting.
- */
-const BLADE_TIP_LERP = 0.35;
-
 // Throttle outgoing guard updates to ~30Hz. The render loop ticks 60+Hz so
 // without this we'd flood the WS with redundant guard packets.
 const GUARD_SEND_INTERVAL_MS = 33;
@@ -206,6 +201,9 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
   // Latest fighter snapshots from server `state` (target for interpolation).
   const targetPlayer = useRef<FighterNetState | null>(null);
   const targetOpponent = useRef<FighterNetState | null>(null);
+  const opponentBladeTipPredictor = useRef(
+    createBladeTipPredictor({ x: 0, y: SHOULDER_Y + 0.6 }),
+  );
 
   // Server clock anchoring — `currentServerNow = lastServerNow + (now - lastServerNowAt)`.
   // Used to compute remaining stun/cooldown/phase ms in server-time.
@@ -397,6 +395,20 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
           } else {
             targetPlayer.current = msg.player;
             targetOpponent.current = msg.opponent;
+          }
+          if (targetOpponent.current) {
+            const opponentTipTarget = targetOpponent.current.bladeTip
+              ?? (targetOpponent.current.guard.active
+                ? targetOpponent.current.guard.tip
+                : { x: 0, y: SHOULDER_Y + 0.6 });
+            opponentBladeTipPredictor.current = updateBladeTipPrediction(
+              opponentBladeTipPredictor.current,
+              {
+                kind: "snapshot",
+                tip: opponentTipTarget,
+                receivedAtMs: localNow,
+              },
+            );
           }
           break;
         }
@@ -717,17 +729,16 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
         POSITION_LERP,
       );
       opponentVisual.current.guard = to.guard;
-      // Live opponent blade tip — server broadcasts it inside `state` (see
-      // `FighterNetState.bladeTip`). Lerp toward the latest snapshot so 30 Hz
-      // tip updates render as a smooth glide instead of stepping. Fallbacks:
-      // last known guard tip, then a neutral chest-up resting pose.
-      const tipTarget = to.bladeTip
-        ?? (to.guard.active ? to.guard.tip : { x: 0, y: SHOULDER_Y + 0.6 });
-      const prevTip = opponentVisual.current.bladeTipBladePlane;
-      opponentVisual.current.bladeTipBladePlane = {
-        x: lerp(prevTip.x, tipTarget.x, BLADE_TIP_LERP),
-        y: lerp(prevTip.y, tipTarget.y, BLADE_TIP_LERP),
-      };
+      // Live opponent blade tip — server broadcasts it at ~30 Hz. Predict a
+      // short distance along the latest measured cursor velocity so the sword
+      // keeps moving between packets, while the shared predictor clamps lead
+      // time/distance to avoid wild overshoot when packets stall.
+      opponentBladeTipPredictor.current = updateBladeTipPrediction(
+        opponentBladeTipPredictor.current,
+        { kind: "frame", dtSeconds: dt, nowMs: now },
+      );
+      opponentVisual.current.bladeTipBladePlane =
+        opponentBladeTipPredictor.current.rendered;
       opponentVisual.current.stunned = haveServerClock && serverNow < to.stunUntil;
       opponentVisual.current.cooldown = haveServerClock && serverNow < to.attackCooldownUntil;
       opponentVisual.current.tradeImmune = false;
