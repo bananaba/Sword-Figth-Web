@@ -11,7 +11,7 @@
 export const ARENA_RADIUS = 4.0;
 
 /** Spawn position of the "player" slot along the duel axis (server frame). */
-export const INITIAL_PLAYER_POS = -1.0;
+export const INITIAL_PLAYER_POS = -1.5;
 
 /** Spawn position of the "opponent" slot along the duel axis (server frame). */
-export const INITIAL_OPPONENT_POS = 1.0;
+export const INITIAL_OPPONENT_POS = 1.5;
