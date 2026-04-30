@@ -638,9 +638,13 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       // Optimistic blade animation (local-only). Server outcome routes
       // through `impact` and triggers FX via dispatcher.
       const windUp = atk.kind === "slice" ? weapon.windUpMs : weapon.thrustChargeMs;
+      const cooldownMs =
+        atk.kind === "thrust"
+          ? weapon.thrustCooldownMs ?? weapon.attackCooldownMs
+          : weapon.attackCooldownMs;
       const impactAt = now + windUp;
       const swingEndAt = impactAt + weapon.swingDurationMs;
-      const cooldownEndAt = Math.max(now + weapon.attackCooldownMs, swingEndAt + 80);
+      const cooldownEndAt = Math.max(now + cooldownMs, swingEndAt + 80);
       const chest: Vec2 = { x: 0, y: SHOULDER_Y };
       let start: Vec2;
       let end: Vec2;

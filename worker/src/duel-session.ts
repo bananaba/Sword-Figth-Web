@@ -301,13 +301,13 @@ export class DuelRoomSession {
     // boundaries match the client's local-attack visual lifecycle.
     const isSlice = message.event.kind === "slice";
     const windUpMs = isSlice ? weapon.windUpMs : weapon.thrustChargeMs;
+    const cooldownMs = isSlice
+      ? weapon.attackCooldownMs
+      : weapon.thrustCooldownMs ?? weapon.attackCooldownMs;
     const inputAt = message.now;
     const impactAt = inputAt + windUpMs;
     const swingEndAt = impactAt + weapon.swingDurationMs;
-    const cooldownEndAt = Math.max(
-      inputAt + weapon.attackCooldownMs,
-      swingEndAt + 80,
-    );
+    const cooldownEndAt = Math.max(inputAt + cooldownMs, swingEndAt + 80);
     this.broadcast({
       t: "attack_telegraph",
       side: attackerSide,

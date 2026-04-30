@@ -121,6 +121,12 @@ export interface WeaponStats {
   thrustKnockback: number;
   counterKnockback: number;
   attackCooldownMs: number;
+  /**
+   * Optional thrust-only cooldown override. When set, thrust inputs use this
+   * instead of `attackCooldownMs` so a weapon can have a faster thrust without
+   * also speeding up its slice. Falls back to `attackCooldownMs` when undefined.
+   */
+  thrustCooldownMs?: number;
   /** Half-width (radians) around perpendicular that counts as a block. */
   guardAngleTolerance: number;
   /** Length the blade tip travels during a thrust. */

@@ -309,9 +309,13 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     if (Math.abs(self.velX) > weapon.motionImmunityVelocityThreshold) return null;
 
     const windUp = kind === "slice" ? weapon.windUpMs : weapon.thrustChargeMs;
+    const cooldownMs =
+      kind === "thrust"
+        ? weapon.thrustCooldownMs ?? weapon.attackCooldownMs
+        : weapon.attackCooldownMs;
     const impactAt = now + windUp;
     const swingEndAt = impactAt + weapon.swingDurationMs;
-    const cooldownEndAt = Math.max(now + weapon.attackCooldownMs, swingEndAt + 80);
+    const cooldownEndAt = Math.max(now + cooldownMs, swingEndAt + 80);
 
     const chest: Vec2 = { x: 0, y: SHOULDER_Y };
     let start: Vec2;
