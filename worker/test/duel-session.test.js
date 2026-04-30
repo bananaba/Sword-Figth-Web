@@ -263,10 +263,10 @@ test("DuelRoomSession ends the round when knockback pushes a fighter out", () =>
       now: 8100,
     }),
   );
-  // dt = 0.6 so BASIC thrust knockback (6.0) pushes the defender past
+  // dt = 1.4 so BASIC thrust knockback (3.0) pushes the defender past
   // ARENA_RADIUS (4.0) from start posX 1.0:
-  //   posX = 1.0 + 6.0 * 0.6 = 4.6 > 4.0 → ringout.
-  session.tick(8300, 0.6);
+  //   posX = 1.0 + 3.0 * 1.4 = 5.2 > 4.0 → ringout.
+  session.tick(8300, 1.4);
 
   assert.deepEqual(attacker.sent.at(-1), {
     t: "round_over",
@@ -546,8 +546,8 @@ function forcePlayerRingoutWin(session, attacker, now = 8100) {
       now,
     }),
   );
-  // dt = 0.6s integration so BASIC thrust knockback (6.0) pushes the
+  // dt = 1.4s integration so BASIC thrust knockback (3.0) pushes the
   // defender past ARENA_RADIUS (4.0) from start posX 1.0:
-  //   posX = 1.0 + 6.0 * 0.6 = 4.6 > 4.0 → ringout.
-  session.tick(now + 200, 0.6);
+  //   posX = 1.0 + 3.0 * 1.4 = 5.2 > 4.0 → ringout.
+  session.tick(now + 200, 1.4);
 }

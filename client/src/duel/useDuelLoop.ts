@@ -561,6 +561,9 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     hud.current.lastOutcome = null;
     useImpacts.getState().clear();
     useShake.getState().reset();
+    // After victory/defeat the loop switched to "victory"/"defeat" BGM. Restart
+    // the match bed so the new round doesn't play under the win/lose stinger.
+    playBgm("match");
   }, [resetForNextRound]);
 
   const tick = useCallback(
