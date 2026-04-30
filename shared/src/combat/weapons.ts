@@ -17,9 +17,9 @@ import type { WeaponId, WeaponStats } from "./types.js";
  */
 export const BASIC_SWORD: WeaponStats = {
   id: "basic",
-  sliceKnockback: 2.0,
-  thrustKnockback: 3.0,
-  counterKnockback: 2.5,
+  sliceKnockback: 3.0,
+  thrustKnockback: 4.5,
+  counterKnockback: 3.75,
   sliceImpactMs: 280,
   thrustImpactMs: 180,
   sliceCooldownMs: 600,
@@ -44,9 +44,9 @@ export const BASIC_SWORD: WeaponStats = {
 export const CHARGE_SWORD: WeaponStats = {
   ...BASIC_SWORD,
   id: "charge",
-  sliceKnockback: 1.5,
-  thrustKnockback: 2.5,
-  counterKnockback: 3.75,
+  sliceKnockback: 2.25,
+  thrustKnockback: 3.75,
+  counterKnockback: 5.625,
   // Slightly heavier swing — committed strikes feel weightier and the
   // longer cooldown discourages spam (you want each counter to count).
   sliceImpactMs: 320,
@@ -65,9 +65,9 @@ export const CHARGE_SWORD: WeaponStats = {
 export const RAPIER: WeaponStats = {
   ...BASIC_SWORD,
   id: "rapier",
-  sliceKnockback: 1.5,
-  thrustKnockback: 4.5,
-  counterKnockback: 2.0,
+  sliceKnockback: 2.25,
+  thrustKnockback: 6.75,
+  counterKnockback: 3.0,
   thrustReach: 1.7,
   sliceImpactMs: 300,
   thrustImpactMs: 120,
