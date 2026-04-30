@@ -3,7 +3,7 @@ import { Water } from "./Water";
 
 export const ARENA_RADIUS = 4.0;
 export const ARENA_HEIGHT = 0.4;
-export const WATER_LEVEL = -0.4;
+export const WATER_LEVEL = -2.0;
 const RIM_THICKNESS = 0.55;
 const RIM_LIFT = 0.06;
 

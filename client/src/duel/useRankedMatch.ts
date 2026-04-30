@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  PLASMA_BLADE,
   type AttackEvent,
   createBladeTipPredictor,
   type FighterState,
+  getWeaponPreset,
   type GuardSnapshot,
   updateBladeTipPrediction,
   type Vec2,
+  type WeaponId,
   type WeaponStats,
 } from "@vibejam/shared";
 import type {
@@ -94,6 +95,7 @@ export interface RankedSummary {
     name: string;
     rating: number;
     saberColor: string;
+    weaponId: WeaponId;
   } | null;
   /** Final match result + rating delta (filled on `match_over`). */
   matchOver: {
@@ -107,7 +109,7 @@ export interface RankedSummary {
 export interface UseRankedMatchOptions {
   initialPlayerZ: number;
   initialOpponentZ: number;
-  identity: { name: string; saberColor: string };
+  identity: { name: string; saberColor: string; weaponId: WeaponId };
   roomId?: string;
   recordResult?: boolean;
 }
@@ -197,7 +199,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
   const playerFighter = useRef<FighterState>(freshFighter(opts.initialPlayerZ));
   const opponentFighter = useRef<FighterState>(freshFighter(opts.initialOpponentZ));
 
-  const weaponRef = useRef<WeaponStats>({ ...PLASMA_BLADE });
+  const weaponRef = useRef<WeaponStats>({ ...getWeaponPreset(opts.identity.weaponId) });
 
   // Latest fighter snapshots from server `state` (target for interpolation).
   const targetPlayer = useRef<FighterNetState | null>(null);
@@ -290,6 +292,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
                 name: opponentEntry.name,
                 rating: opponentEntry.rating,
                 saberColor: opponentEntry.saberColor,
+                weaponId: (opponentEntry.weaponId ?? "basic") as WeaponId,
               },
             });
           }
@@ -540,6 +543,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
               name: opts.identity.name,
               rating,
               saberColor: opts.identity.saberColor,
+              weaponId: opts.identity.weaponId,
             },
             (queueSize) => {
               if (!cancelled) updateSummary({ status: "queued", queueSize });
@@ -563,6 +567,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
                   name: opts.identity.name,
                   rating,
                   saberColor: opts.identity.saberColor,
+                  weaponId: opts.identity.weaponId,
                 },
               });
             }
@@ -594,17 +599,44 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       clientRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts.identity.name, opts.identity.saberColor, opts.recordResult, opts.roomId]);
+  }, [
+    opts.identity.name,
+    opts.identity.saberColor,
+    opts.identity.weaponId,
+    opts.recordResult,
+    opts.roomId,
+  ]);
 
   // ── Input handlers ─────────────────────────────────────────────────────
   const handlePlayerAttack = useCallback(
     (atk: MouseAttack) => {
       if (matchRef.current.phase !== "fighting") return;
-      const event = mouseToAttackEvent(atk, weaponRef.current);
       const now = performance.now();
+      const weapon = weaponRef.current;
+      // Authority gate — mirrors solo's `commitPending` (useDuelLoop.ts
+      // L297-303). Server resolver rejects stunned attacks but doesn't gate
+      // cooldown (resolver.ts L45-48), so without this the client spams
+      // attacks during cooldown and they land. Stun/motion are double-gated
+      // for snappy feedback (server still re-checks).
+      const tp = targetPlayer.current;
+      const haveServerClock = lastServerNow.current !== 0;
+      const serverNow = haveServerClock
+        ? lastServerNow.current + (now - lastServerNowAt.current)
+        : 0;
+      if (tp && haveServerClock) {
+        if (serverNow < tp.stunUntil) return;
+        if (serverNow < tp.attackCooldownUntil) return;
+        if (Math.abs(tp.velX) > weapon.motionImmunityVelocityThreshold) return;
+      }
+      if (
+        localPlayerAttack.current &&
+        now < localPlayerAttack.current.cooldownEndAt
+      ) {
+        return;
+      }
+      const event = mouseToAttackEvent(atk, weapon);
       // Optimistic blade animation (local-only). Server outcome routes
       // through `impact` and triggers FX via dispatcher.
-      const weapon = weaponRef.current;
       const windUp = atk.kind === "slice" ? weapon.windUpMs : weapon.thrustChargeMs;
       const impactAt = now + windUp;
       const swingEndAt = impactAt + weapon.swingDurationMs;
@@ -669,7 +701,26 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
 
   const setPlayerGuard = useCallback((active: boolean, pointer: Vec2) => {
     const now = performance.now();
-    const guard = buildPerpendicularGuard(active, pointer, weaponRef.current.bladeLength);
+    // Mirror solo's gate (useDuelLoop.ts L472-484): stunned/attacking force
+    // active=false so a "공격이 막힌 사람은 stun 동안 무방비" rule actually
+    // holds. Server also enforces this; local gate is for snappy feedback so
+    // guard glow doesn't appear during stun while we wait for the next state
+    // snapshot.
+    const tp = targetPlayer.current;
+    const haveServerClock = lastServerNow.current !== 0;
+    const serverNow = haveServerClock
+      ? lastServerNow.current + (now - lastServerNowAt.current)
+      : 0;
+    const stunned = !!(tp && haveServerClock && serverNow < tp.stunUntil);
+    const attacking =
+      localPlayerAttack.current !== null &&
+      now < localPlayerAttack.current.cooldownEndAt;
+    const isActive = active && !stunned && !attacking;
+    const guard = buildPerpendicularGuard(
+      isActive,
+      pointer,
+      weaponRef.current.bladeLength,
+    );
     // Local instant feedback so the player's own guard renders without
     // server roundtrip.
     playerVisual.current.guard = guard;

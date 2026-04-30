@@ -1,3 +1,4 @@
+import type { WeaponId } from "@vibejam/shared";
 import type { RankedPlayerInfo } from "./types";
 
 /**
@@ -15,6 +16,7 @@ export interface MatchmakeRequest {
   name: string;
   rating: number;
   saberColor: string;
+  weaponId?: WeaponId;
 }
 
 export type MatchmakeResult =

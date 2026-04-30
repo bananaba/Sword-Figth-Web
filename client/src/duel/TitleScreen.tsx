@@ -1,57 +1,138 @@
 import { useState } from "react";
+import type { WeaponId } from "@vibejam/shared";
 
 /**
- * Title-screen identity capture. Two axes — name + plasma-blade color —
+ * Title-screen identity capture. Three axes — name + character + weapon —
  * which Beat Saber + .io games show is the right "felt personalization 90%"
  * minimum for a jam release (`research_character_weapon_customization_20260429.md`
  * §4.3). Saved to localStorage so returning players skip this screen, and
- * later (Phase 11) shipped to the server as `joinOptions: { name, saberColor }`.
+ * shipped to the server as `joinOptions: { name, saberColor, weaponId }`.
  *
- * Red is intentionally absent from the preset palette — Sith-coded IP risk
- * (§7.4). Magenta covers the "purple-ish" want without trademark collision.
+ * Saber color is now derived from the chosen character (X bot → cyan/blue,
+ * Y bot → magenta/pink) instead of being a separate picker. Two reasons:
+ *   1. Switch Sports' chambara skins each ship a fixed body+blade pairing,
+ *      so the silhouette and the slash trail read as one identity.
+ *   2. Removes a redundant choice (the player who picked X bot rarely also
+ *      wanted to override the blade to magenta — the colors *belong* to
+ *      their characters).
+ *
+ * Red is intentionally absent — Sith-coded IP risk
+ * (`research_character_weapon_customization_20260429.md` §7.4).
  */
-export interface SaberPreset {
-  id: string;
-  color: string;
+
+export type CharacterId = "alpha" | "beta";
+
+export interface CharacterPreset {
+  id: CharacterId;
   label: string;
+  modelUrl: string;
+  /** Saber color shipped with this character (replaces the standalone picker). */
+  saberColor: string;
+  /** Body silhouette tint shown on the title-screen card. */
+  cardTint: string;
 }
 
-export const SABER_PRESETS: readonly SaberPreset[] = [
-  { id: "cyan", color: "#38bdf8", label: "Cyan" },
-  { id: "green", color: "#4ade80", label: "Green" },
-  { id: "purple", color: "#a78bfa", label: "Purple" },
-  { id: "magenta", color: "#e879f9", label: "Magenta" },
-  { id: "yellow", color: "#facc15", label: "Yellow" },
+// Mixamo's two stock mannequins: Alpha (blue/cyan tint) ships inside
+// `/models/Y Bot.fbx` (`Alpha_*` materials), Beta (pink/lavender tint) ships
+// inside `/models/X Bot.fbx` (`Beta_*` materials). The pack's filenames are
+// historical Mixamo handles — we surface the actual character names + saber
+// colours that match the body tint.
+export const CHARACTER_PRESETS: readonly CharacterPreset[] = [
+  {
+    id: "alpha",
+    label: "Alpha",
+    modelUrl: "/models/Y Bot.fbx",
+    saberColor: "#38bdf8", // cyan/blue — matches Alpha mannequin tint
+    cardTint: "#38bdf8",
+  },
+  {
+    id: "beta",
+    label: "Beta",
+    modelUrl: "/models/X Bot.fbx",
+    saberColor: "#e879f9", // magenta/pink — matches Beta mannequin tint
+    cardTint: "#e879f9",
+  },
+] as const;
+
+export interface WeaponPreset {
+  id: WeaponId;
+  label: string;
+  /** One-line tradeoff shown on the card — explains the stat swap. */
+  blurb: string;
+}
+
+export const WEAPON_PICKER_OPTIONS: readonly WeaponPreset[] = [
+  {
+    id: "basic",
+    label: "BASIC",
+    blurb: "balanced slice + thrust",
+  },
+  {
+    id: "charge",
+    label: "CHARGE",
+    blurb: "weak slice · devastating counter",
+  },
+  {
+    id: "rapier",
+    label: "RAPIER",
+    blurb: "weak slice · devastating thrust",
+  },
 ] as const;
 
 export const NAME_KEY = "chambara.name";
-export const SABER_KEY = "chambara.saber";
+export const CHARACTER_KEY = "chambara.character";
+export const WEAPON_KEY = "chambara.weapon";
 const MAX_NAME_LEN = 16;
 const DEFAULT_NAME = "Duelist";
-const DEFAULT_SABER = "#38bdf8";
+const DEFAULT_CHARACTER: CharacterId = "alpha";
+const DEFAULT_WEAPON: WeaponId = "basic";
 
 export type DuelMode = "solo" | "ranked" | "private";
 
 export interface Identity {
   name: string;
+  characterId: CharacterId;
+  weaponId: WeaponId;
+  /** Derived from characterId — kept on the identity so consumers don't all need the lookup. */
   saberColor: string;
   /** Mode is chosen each session — not persisted. */
   mode: DuelMode;
   roomCode?: string;
 }
 
+function findCharacter(id: string | null): CharacterPreset {
+  return (
+    CHARACTER_PRESETS.find((c) => c.id === id) ??
+    CHARACTER_PRESETS.find((c) => c.id === DEFAULT_CHARACTER)!
+  );
+}
+
+function findWeapon(id: string | null): WeaponPreset {
+  return (
+    WEAPON_PICKER_OPTIONS.find((w) => w.id === id) ??
+    WEAPON_PICKER_OPTIONS.find((w) => w.id === DEFAULT_WEAPON)!
+  );
+}
+
 /**
- * Read stored identity if both fields exist; otherwise return `null` so the
+ * Read stored identity if all fields exist; otherwise return `null` so the
  * caller knows to mount the title screen. Mode always starts unset so the
  * player chooses Solo vs Ranked each time.
  */
 export function readStoredIdentity(): Omit<Identity, "mode"> | null {
   try {
     const name = localStorage.getItem(NAME_KEY);
-    const saber = localStorage.getItem(SABER_KEY);
-    if (!name || !saber) return null;
-    if (!SABER_PRESETS.some((p) => p.color === saber)) return null;
-    return { name, saberColor: saber };
+    const characterId = localStorage.getItem(CHARACTER_KEY);
+    const weaponId = localStorage.getItem(WEAPON_KEY);
+    if (!name || !characterId || !weaponId) return null;
+    const character = findCharacter(characterId);
+    const weapon = findWeapon(weaponId);
+    return {
+      name,
+      characterId: character.id,
+      weaponId: weapon.id,
+      saberColor: character.saberColor,
+    };
   } catch {
     return null;
   }
@@ -70,28 +151,44 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
       return "";
     }
   });
-  const [saberColor, setSaberColor] = useState<string>(() => {
+  const [characterId, setCharacterId] = useState<CharacterId>(() => {
     try {
-      const stored = localStorage.getItem(SABER_KEY);
-      if (stored && SABER_PRESETS.some((p) => p.color === stored)) return stored;
+      return findCharacter(localStorage.getItem(CHARACTER_KEY)).id;
     } catch {
-      /* fall through */
+      return DEFAULT_CHARACTER;
     }
-    return DEFAULT_SABER;
+  });
+  const [weaponId, setWeaponId] = useState<WeaponId>(() => {
+    try {
+      return findWeapon(localStorage.getItem(WEAPON_KEY)).id;
+    } catch {
+      return DEFAULT_WEAPON;
+    }
   });
   const [roomCode, setRoomCode] = useState("");
   const [generatedPrivateCode] = useState(makeRoomCode);
+
+  const character = findCharacter(characterId);
+  const accent = character.saberColor;
 
   const handleStart = (mode: DuelMode, code?: string): void => {
     const trimmed = name.trim().slice(0, MAX_NAME_LEN);
     const finalName = trimmed || DEFAULT_NAME;
     try {
       localStorage.setItem(NAME_KEY, finalName);
-      localStorage.setItem(SABER_KEY, saberColor);
+      localStorage.setItem(CHARACTER_KEY, characterId);
+      localStorage.setItem(WEAPON_KEY, weaponId);
     } catch {
       /* localStorage may be disabled — proceed without persisting */
     }
-    onStart({ name: finalName, saberColor, mode, roomCode: code });
+    onStart({
+      name: finalName,
+      characterId,
+      weaponId,
+      saberColor: character.saberColor,
+      mode,
+      roomCode: code,
+    });
   };
 
   const normalizedPrivateCode = normalizeRoomCode(roomCode);
@@ -139,12 +236,12 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
 
       <div
         style={{
-          marginTop: 48,
+          marginTop: 36,
           padding: 24,
           background: "rgba(15,23,42,0.78)",
           borderRadius: 14,
           backdropFilter: "blur(6px)",
-          minWidth: 360,
+          minWidth: 420,
           display: "flex",
           flexDirection: "column",
           gap: 18,
@@ -168,7 +265,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
               fontSize: 18,
               fontWeight: 600,
               background: "rgba(2,6,23,0.6)",
-              border: `1px solid ${saberColor}`,
+              border: `1px solid ${accent}`,
               borderRadius: 8,
               color: "#f1f5f9",
               outline: "none",
@@ -180,40 +277,102 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span style={{ fontSize: 12, color: "#94a3b8", letterSpacing: 1 }}>
-            PLASMA BLADE
+            CHARACTER
           </span>
-          <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
-            {SABER_PRESETS.map((p) => {
-              const selected = p.color === saberColor;
+          <div style={{ display: "flex", gap: 10 }}>
+            {CHARACTER_PRESETS.map((c) => {
+              const selected = c.id === characterId;
               return (
                 <button
-                  key={p.id}
-                  onClick={() => setSaberColor(p.color)}
-                  title={p.label}
+                  key={c.id}
+                  onClick={() => setCharacterId(c.id)}
                   style={{
                     flex: 1,
-                    height: 56,
+                    padding: "14px 12px",
                     border: selected
-                      ? `2px solid ${p.color}`
+                      ? `2px solid ${c.cardTint}`
                       : "2px solid rgba(255,255,255,0.08)",
                     borderRadius: 10,
-                    background: "rgba(2,6,23,0.55)",
+                    background: selected
+                      ? `linear-gradient(180deg, rgba(2,6,23,0.6), ${c.cardTint}22)`
+                      : "rgba(2,6,23,0.55)",
                     cursor: "pointer",
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
-                    justifyContent: "center",
-                    transition: "border-color 120ms",
+                    gap: 8,
+                    transition: "border-color 120ms, background 120ms",
                   }}
                 >
-                  <div
+                  <CharacterGlyph color={c.cardTint} active={selected} />
+                  <span
                     style={{
-                      width: 6,
-                      height: 36,
-                      background: p.color,
-                      borderRadius: 3,
-                      boxShadow: `0 0 12px ${p.color}, 0 0 24px ${p.color}`,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      letterSpacing: 2,
+                      color: selected ? c.cardTint : "#cbd5e1",
+                      textTransform: "uppercase",
                     }}
-                  />
+                  >
+                    {c.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 12, color: "#94a3b8", letterSpacing: 1 }}>
+            WEAPON
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {WEAPON_PICKER_OPTIONS.map((w) => {
+              const selected = w.id === weaponId;
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => setWeaponId(w.id)}
+                  style={{
+                    flex: 1,
+                    padding: "12px 10px",
+                    border: selected
+                      ? `2px solid ${accent}`
+                      : "2px solid rgba(255,255,255,0.08)",
+                    borderRadius: 10,
+                    background: selected
+                      ? `linear-gradient(180deg, rgba(2,6,23,0.6), ${accent}22)`
+                      : "rgba(2,6,23,0.55)",
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 6,
+                    transition: "border-color 120ms, background 120ms",
+                  }}
+                >
+                  <WeaponGlyph weaponId={w.id} accent={accent} active={selected} />
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      letterSpacing: 2,
+                      color: selected ? accent : "#cbd5e1",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {w.label}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "#94a3b8",
+                      lineHeight: 1.3,
+                      textAlign: "center",
+                    }}
+                  >
+                    {w.blurb}
+                  </span>
                 </button>
               );
             })}
@@ -231,7 +390,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
               letterSpacing: 2,
               color: "#e2e8f0",
               background: "rgba(2,6,23,0.6)",
-              border: `1px solid ${saberColor}`,
+              border: `1px solid ${accent}`,
               borderRadius: 8,
               cursor: "pointer",
               textTransform: "uppercase",
@@ -248,12 +407,12 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
               fontWeight: 800,
               letterSpacing: 2,
               color: "#0b1424",
-              background: saberColor,
+              background: accent,
               border: "none",
               borderRadius: 8,
               cursor: "pointer",
               textTransform: "uppercase",
-              boxShadow: `0 0 24px ${saberColor}`,
+              boxShadow: `0 0 24px ${accent}`,
             }}
           >
             Ranked Online
@@ -283,12 +442,12 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
                   handleStart("private", normalizedPrivateCode || generatedPrivateCode);
                 }
               }}
-              style={inputStyle(saberColor)}
+              style={inputStyle(accent)}
             />
           </label>
           <button
             onClick={() => handleStart("private", normalizedPrivateCode || generatedPrivateCode)}
-            style={secondaryButtonStyle(saberColor)}
+            style={secondaryButtonStyle(accent)}
           >
             Join
           </button>
@@ -410,6 +569,135 @@ function ControlRow({
       <span style={{ color: "#94a3b8", fontSize: 12 }}>{hint}</span>
       <span style={{ color: "#cbd5e1", fontWeight: 600 }}>→ {action}</span>
     </div>
+  );
+}
+
+/**
+ * Stylised humanoid silhouette per character — kept SVG-only so the title
+ * screen does not have to mount a second R3F canvas just for picker
+ * thumbnails. The accent color shows on the saber so each card previews
+ * the body+blade pairing the player will be locked into.
+ */
+function CharacterGlyph({ color, active }: { color: string; active: boolean }) {
+  const opacity = active ? 1 : 0.55;
+  return (
+    <svg width="56" height="64" viewBox="0 0 56 64" style={{ opacity }}>
+      {/* head */}
+      <circle cx="28" cy="14" r="6" fill="#cbd5e1" />
+      {/* torso */}
+      <rect x="20" y="22" width="16" height="22" rx="3" fill="#94a3b8" />
+      {/* legs */}
+      <rect x="21" y="44" width="6" height="16" rx="1.5" fill="#64748b" />
+      <rect x="29" y="44" width="6" height="16" rx="1.5" fill="#64748b" />
+      {/* sword arm */}
+      <rect x="36" y="24" width="4" height="14" rx="1" fill="#94a3b8" />
+      {/* saber tinted by character color */}
+      <rect
+        x="42"
+        y="6"
+        width="3"
+        height="34"
+        rx="1.5"
+        fill={color}
+        style={{ filter: `drop-shadow(0 0 4px ${color})` }}
+      />
+    </svg>
+  );
+}
+
+/**
+ * Per-weapon SVG glyph for the picker. Kept abstract — the renderer in
+ * `Fighter.tsx` is the source of truth for the in-game model; this is just a
+ * silhouette hint at the family (long, charged, narrow).
+ */
+function WeaponGlyph({
+  weaponId,
+  accent,
+  active,
+}: {
+  weaponId: WeaponId;
+  accent: string;
+  active: boolean;
+}) {
+  const opacity = active ? 1 : 0.6;
+  const grip = "#475569";
+  const guard = "#94a3b8";
+  if (weaponId === "basic") {
+    return (
+      <svg width="52" height="48" viewBox="0 0 52 48" style={{ opacity }}>
+        {/* pommel */}
+        <circle cx="26" cy="42" r="3" fill={guard} />
+        {/* grip */}
+        <rect x="24.5" y="34" width="3" height="8" fill={grip} />
+        {/* crossguard */}
+        <rect x="16" y="32" width="20" height="3" rx="1" fill={guard} />
+        {/* blade */}
+        <rect
+          x="24.5"
+          y="6"
+          width="3"
+          height="26"
+          fill={accent}
+          style={{ filter: `drop-shadow(0 0 3px ${accent})` }}
+        />
+        <polygon
+          points="24.5,6 27.5,6 26,2"
+          fill={accent}
+          style={{ filter: `drop-shadow(0 0 3px ${accent})` }}
+        />
+      </svg>
+    );
+  }
+  if (weaponId === "charge") {
+    return (
+      <svg width="52" height="48" viewBox="0 0 52 48" style={{ opacity }}>
+        <circle cx="26" cy="42" r="3" fill={guard} />
+        <rect x="24" y="34" width="4" height="8" fill={grip} />
+        {/* heavier crossguard */}
+        <rect x="13" y="31" width="26" height="4" rx="1.5" fill={guard} />
+        {/* outer blade — wider */}
+        <rect x="22" y="6" width="8" height="25" fill="#3f4753" />
+        {/* glowing inner core */}
+        <rect
+          x="24.5"
+          y="6"
+          width="3"
+          height="25"
+          fill={accent}
+          style={{ filter: `drop-shadow(0 0 5px ${accent})` }}
+        />
+        {/* energy node halfway up the blade */}
+        <circle cx="26" cy="20" r="2.4" fill={accent} />
+      </svg>
+    );
+  }
+  // rapier — slim blade, ornate basket
+  return (
+    <svg width="52" height="48" viewBox="0 0 52 48" style={{ opacity }}>
+      <circle cx="26" cy="44" r="2.5" fill={guard} />
+      <rect x="25" y="36" width="2" height="8" fill={grip} />
+      {/* basket guard */}
+      <path
+        d="M 14 33 Q 26 24 38 33"
+        stroke={guard}
+        strokeWidth="2.5"
+        fill="none"
+      />
+      <rect x="14" y="32" width="24" height="2.5" rx="1" fill={guard} />
+      {/* slim blade */}
+      <rect
+        x="25.5"
+        y="3"
+        width="1.5"
+        height="29"
+        fill={accent}
+        style={{ filter: `drop-shadow(0 0 3px ${accent})` }}
+      />
+      <polygon
+        points="25.5,3 27,3 26.25,0"
+        fill={accent}
+      />
+    </svg>
   );
 }
 

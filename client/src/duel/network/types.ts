@@ -1,4 +1,10 @@
-import type { AttackKind, GuardSnapshot, Outcome, Vec2 } from "@vibejam/shared";
+import type {
+  AttackKind,
+  GuardSnapshot,
+  Outcome,
+  Vec2,
+  WeaponId,
+} from "@vibejam/shared";
 
 /**
  * Wire protocol shared with `worker/src/duel-session.ts`. Authoritative
@@ -24,6 +30,8 @@ export interface RankedPlayerInfo {
   name: string;
   rating: number;
   saberColor: string;
+  /** Optional for backward-compat with worker builds older than 2026-04-30. */
+  weaponId?: WeaponId;
 }
 
 export interface FighterNetState {
@@ -118,6 +126,7 @@ export type ClientMessage =
         name: string;
         rating: number;
         saberColor: string;
+        weaponId?: WeaponId;
       };
     }
   | { t: "ready"; now: number }

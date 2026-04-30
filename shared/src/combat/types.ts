@@ -96,6 +96,14 @@ export interface Outcome {
 }
 
 /**
+ * Identifier for the player-selectable weapon presets. The resolver itself is
+ * weapon-agnostic — this id only routes the right `WeaponStats` object into
+ * `useDuelLoop` / the worker on hello, and routes the right visual model into
+ * `Fighter`'s sword renderer.
+ */
+export type WeaponId = "basic" | "charge" | "rapier";
+
+/**
  * Per-weapon tuning. Future weapons (charge sword, twin swords, …) will ship
  * by swapping this stats object — the resolver is weapon-agnostic.
  *
@@ -107,6 +115,8 @@ export interface Outcome {
  *  - guardAngleTolerance ↑ for forgiving-block weapons
  */
 export interface WeaponStats {
+  /** Preset id this stats object belongs to (omitted for ad-hoc test weapons). */
+  id?: WeaponId;
   sliceKnockback: number;
   thrustKnockback: number;
   counterKnockback: number;

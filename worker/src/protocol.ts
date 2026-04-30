@@ -1,8 +1,12 @@
+import type { WeaponId } from "@vibejam/shared";
+
 export interface MatchmakePlayer {
   playerId: string;
   name: string;
   rating: number;
   saberColor: string;
+  /** Optional for backward-compat with pre-multi-weapon clients (defaults to "basic"). */
+  weaponId?: WeaponId;
 }
 
 export type MatchmakeResponse =
@@ -17,6 +21,13 @@ export type MatchmakeResponse =
       roomId: string;
       players: [MatchmakePlayer, MatchmakePlayer];
     };
+
+const KNOWN_WEAPONS: ReadonlySet<WeaponId> = new Set(["basic", "charge", "rapier"]);
+
+function parseWeaponId(value: unknown): WeaponId | undefined {
+  if (typeof value !== "string") return undefined;
+  return KNOWN_WEAPONS.has(value as WeaponId) ? (value as WeaponId) : undefined;
+}
 
 export function parseMatchmakePlayer(value: unknown): MatchmakePlayer | null {
   if (!value || typeof value !== "object") return null;
@@ -36,5 +47,6 @@ export function parseMatchmakePlayer(value: unknown): MatchmakePlayer | null {
     name: name.slice(0, 24),
     rating: Math.round(rating),
     saberColor: saberColor.slice(0, 24),
+    weaponId: parseWeaponId(candidate.weaponId),
   };
 }

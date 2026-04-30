@@ -1,5 +1,6 @@
 import {
   applyOutcome,
+  getWeaponPreset,
   resolveAttack,
   tickFighter,
   type AttackEvent,
@@ -10,7 +11,6 @@ import {
   type Vec2,
   type WeaponStats,
 } from "@vibejam/shared";
-import * as Combat from "@vibejam/shared";
 import { parseMatchmakePlayer, type MatchmakePlayer } from "./protocol.js";
 import { applyEloResult } from "./rating.js";
 
@@ -225,9 +225,16 @@ export class DuelRoomSession {
       return;
     }
 
+    // Server-authoritative stun gate: a stunned fighter cannot raise their
+    // guard. Without this an attacker whose swing got blocked could bring
+    // their own guard up during the post-block stun and cancel the defender's
+    // counter pressure. grip/tip still update so the visual posture
+    // transitions cleanly out of stun.
+    const fighter = this.fighters[side];
+    const active = message.guard.active && Date.now() >= fighter.stunUntil;
     this.fighters[side] = {
-      ...this.fighters[side],
-      guard: message.guard,
+      ...fighter,
+      guard: { ...message.guard, active },
     };
   }
 
@@ -268,18 +275,37 @@ export class DuelRoomSession {
     const attacker = this.fighters[attackerSide];
     const defender = this.fighters[defenderSide];
 
+    // Stun + cooldown gate. Resolver rejects stunned attacks but does NOT
+    // gate cooldown (resolver.ts L45-48 explains why), so without this an
+    // honest-but-broken or malicious client could spam attacks during the
+    // post-input cooldown window and have every one of them resolve.
+    // `message.now` is the attacker's wall clock — the same clock that set
+    // `stunUntil` / `attackCooldownUntil` in earlier `applyOutcome` calls.
+    if (
+      message.now < attacker.stunUntil ||
+      message.now < attacker.attackCooldownUntil
+    ) {
+      return;
+    }
+
+    // Attacker's weapon drives knockback / cooldown / windup / stun. The
+    // defender's weapon would only affect guardAngleTolerance, but since
+    // resolveAttack reads tolerance from the same WeaponStats parameter,
+    // using the attacker's weapon here matches the solo client path
+    // (`useDuelLoop` only carries one weaponRef). Worth revisiting if we
+    // ever ship per-side defensive stats.
+    const weapon = this.weaponForSide(attackerSide);
+
     // Telegraph the swing to BOTH sides immediately so the opponent sees a
     // wind-up + arc (otherwise they'd only ever see the impact ring). Phase
     // boundaries match the client's local-attack visual lifecycle.
     const isSlice = message.event.kind === "slice";
-    const windUpMs = isSlice
-      ? DEFAULT_WEAPON.windUpMs
-      : DEFAULT_WEAPON.thrustChargeMs;
+    const windUpMs = isSlice ? weapon.windUpMs : weapon.thrustChargeMs;
     const inputAt = message.now;
     const impactAt = inputAt + windUpMs;
-    const swingEndAt = impactAt + DEFAULT_WEAPON.swingDurationMs;
+    const swingEndAt = impactAt + weapon.swingDurationMs;
     const cooldownEndAt = Math.max(
-      inputAt + DEFAULT_WEAPON.attackCooldownMs,
+      inputAt + weapon.attackCooldownMs,
       swingEndAt + 80,
     );
     this.broadcast({
@@ -300,7 +326,7 @@ export class DuelRoomSession {
       defender,
       DEFAULT_BODY,
       message.event,
-      DEFAULT_WEAPON,
+      weapon,
       message.now,
     );
     const next = applyOutcome(
@@ -309,12 +335,18 @@ export class DuelRoomSession {
       outcome,
       attackerSide === "player" ? 1 : -1,
       message.now,
-      DEFAULT_WEAPON,
+      weapon,
     );
     this.fighters[attackerSide] = next.attacker;
     this.fighters[defenderSide] = next.defender;
 
     this.broadcastImpact(attackerSide, message.now, outcome);
+  }
+
+  /** Look up the WeaponStats for the player on `side`, falling back to BASIC. */
+  private weaponForSide(side: DuelSide): WeaponStats {
+    const player = this.playerForSide(side);
+    return getWeaponPreset(player?.weaponId);
   }
 
   private nextSide(): DuelSide | null {
@@ -338,6 +370,7 @@ export class DuelRoomSession {
         name: player.name,
         rating: player.rating,
         saberColor: player.saberColor,
+        weaponId: player.weaponId ?? "basic",
       }));
 
     this.broadcast({
@@ -584,14 +617,12 @@ const DEFAULT_BODY: BodyHitbox = {
   maxY: 1.7,
 };
 
-const DEFAULT_WEAPON = resolveDefaultWeapon();
-
 const COUNTDOWN_MS = 3000;
 const ROUND_DURATION_MS = 45_000;
 const ROUND_OVER_MS = 2200;
 const WINS_TO_TAKE_MATCH = 2;
-const INITIAL_PLAYER_POS = -1.6;
-const INITIAL_OPPONENT_POS = 1.6;
+const INITIAL_PLAYER_POS = -1.0;
+const INITIAL_OPPONENT_POS = 1.0;
 const ARENA_RADIUS = 4.2;
 const FRICTION = 5.0;
 
@@ -665,15 +696,6 @@ function freshFighter(posX: number): FighterState {
       tip: { x: 0, y: 1.15 },
     },
   };
-}
-
-function resolveDefaultWeapon(): WeaponStats {
-  const combat = Combat as unknown as { PLASMA_BLADE?: WeaponStats; BASIC_SWORD?: WeaponStats };
-  const weapon = combat.PLASMA_BLADE ?? combat.BASIC_SWORD;
-  if (!weapon) {
-    throw new Error("No default weapon exported from @vibejam/shared");
-  }
-  return weapon;
 }
 
 function parseClientMessage(rawMessage: string): ClientMessage | null {

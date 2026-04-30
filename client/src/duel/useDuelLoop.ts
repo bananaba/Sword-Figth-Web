@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import {
-  PLASMA_BLADE,
   applyOutcome,
+  getWeaponPreset,
   resolveAttack,
   tickFighter,
   type AttackEvent,
@@ -11,6 +11,7 @@ import {
   type GuardSnapshot,
   type Outcome,
   type Vec2,
+  type WeaponId,
   type WeaponStats,
 } from "@vibejam/shared";
 export type { WeaponStats };
@@ -81,6 +82,9 @@ export interface UseDuelLoopOptions {
   initialPlayerZ: number;
   initialOpponentZ: number;
   arenaRadius: number;
+  /** Player's weapon — picks the base WeaponStats (basic / charge / rapier). */
+  weaponId?: WeaponId;
+  /** Optional patch applied on top of the resolved preset (e.g. debug tuning). */
   initialWeapon?: Partial<WeaponStats>;
 }
 
@@ -240,7 +244,10 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const playerStateRef = useRef<FighterState>(freshFighter(opts.initialPlayerZ));
   const opponentStateRef = useRef<FighterState>(freshFighter(opts.initialOpponentZ));
   const matchRef = useRef<MatchState>(initialMatch(performance.now()));
-  const weaponRef = useRef<WeaponStats>({ ...PLASMA_BLADE, ...(opts.initialWeapon ?? {}) });
+  const weaponRef = useRef<WeaponStats>({
+    ...getWeaponPreset(opts.weaponId),
+    ...(opts.initialWeapon ?? {}),
+  });
   const pendingPlayerAttack = useRef<PendingAttack | null>(null);
   const pendingOpponentAttack = useRef<PendingAttack | null>(null);
 

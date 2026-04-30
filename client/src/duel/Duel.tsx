@@ -8,7 +8,7 @@ import {
 import type { ChromaticAberrationEffect, VignetteEffect } from "postprocessing";
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import * as THREE from "three";
-import { PLASMA_BLADE, type Vec2 } from "@vibejam/shared";
+import { BASIC_SWORD, type Vec2, type WeaponId } from "@vibejam/shared";
 import { ARENA_RADIUS, Arena3D } from "./Arena3D";
 import { Fighter, SHOULDER_Y, SWORD_FORWARD_OFFSET } from "./Fighter";
 import { ImpactRings } from "./ImpactRings";
@@ -21,7 +21,10 @@ import { useFlash } from "./stores/useFlash";
 import { useShake } from "./stores/useShake";
 import { useTimeScale } from "./stores/useTimeScale";
 import {
+  CHARACTER_PRESETS,
   TitleScreen,
+  type CharacterId,
+  type CharacterPreset,
   type Identity,
 } from "./TitleScreen";
 import { useRankedMatch, type RankedSummary } from "./useRankedMatch";
@@ -34,18 +37,30 @@ import {
   type DuelTuning,
 } from "./DuelDebug";
 
-const PLAYER_Z = -1.6;
-const OPPONENT_Z = +1.6;
-const PLAYER_MODEL_URL = "/models/X Bot.fbx";
-const OPPONENT_MODEL_URL = "/models/Y Bot.fbx";
+const PLAYER_Z = -1.0;
+const OPPONENT_Z = +1.0;
 // Camera shake amplitude when trauma == 1.0. Tuned for over-the-shoulder
 // 3-4 unit camera distance (`research_impact_feedback_20260429.md` §3.5.2).
 const SHAKE_AMPLITUDE = 0.18;
 
-// Opponent (AI) accent color. Magenta — high hue contrast vs. all five
-// player presets, and avoids Sith-coded red
-// (`research_character_weapon_customization_20260429.md` §3.3, §7.4).
-const OPPONENT_ACCENT = "#e879f9";
+/**
+ * Solo opponent always takes the *other* character so the matchup reads
+ * visually (X bot blue vs. Y bot pink). For ranked the opponent's character
+ * comes from the server payload — but the worker currently only sends
+ * `saberColor`, so ranked opponents pick a model whose saber color is closest
+ * to the broadcast value.
+ */
+function pickOpponentCharacter(playerId: CharacterId): CharacterPreset {
+  const other = CHARACTER_PRESETS.find((c) => c.id !== playerId);
+  return other ?? CHARACTER_PRESETS[0]!;
+}
+
+function characterByColor(color: string | undefined): CharacterPreset {
+  return (
+    CHARACTER_PRESETS.find((c) => c.saberColor === color) ??
+    CHARACTER_PRESETS[1]! /* fallback to ybot so the player still gets visual contrast */
+  );
+}
 
 // react-postprocessing's `forwardRef` types resolve to the *constructor*
 // type rather than instance, so the ergonomic ref types we actually want
@@ -58,6 +73,10 @@ function GameStage({
   debug,
   playerAccent,
   opponentAccent,
+  playerModelUrl,
+  opponentModelUrl,
+  playerWeaponId,
+  opponentWeaponId,
   caRef,
   vigRef,
   aiEnabled,
@@ -66,6 +85,11 @@ function GameStage({
   debug: boolean;
   playerAccent: string;
   opponentAccent: string;
+  playerModelUrl: string;
+  opponentModelUrl: string;
+  playerWeaponId: WeaponId;
+  /** Opponent weapon — solo: BASIC, ranked: from server hello (defaults to BASIC for old clients). */
+  opponentWeaponId: WeaponId;
   caRef: CaRef;
   vigRef: VigRef;
   /** Solo runs the local AI tick; ranked mode disables it (server is authority). */
@@ -175,13 +199,15 @@ function GameStage({
     <>
       <Fighter
         state={duel.playerVisual}
-        modelUrl={PLAYER_MODEL_URL}
+        modelUrl={playerModelUrl}
         accentColor={playerAccent}
+        weaponId={playerWeaponId}
       />
       <Fighter
         state={duel.opponentVisual}
-        modelUrl={OPPONENT_MODEL_URL}
+        modelUrl={opponentModelUrl}
         accentColor={opponentAccent}
+        weaponId={opponentWeaponId}
       />
       <ImpactRings />
       <SparkParticles />
@@ -255,10 +281,22 @@ function DuelGame({
   identity: Identity;
   onLeave: () => void;
 }) {
+  const opponentCharacter = useMemo(
+    () => pickOpponentCharacter(identity.characterId),
+    [identity.characterId],
+  );
+  const playerCharacter = useMemo(
+    () =>
+      CHARACTER_PRESETS.find((c) => c.id === identity.characterId) ??
+      CHARACTER_PRESETS[0]!,
+    [identity.characterId],
+  );
+
   const duel = useDuelLoop({
     initialPlayerZ: PLAYER_Z,
     initialOpponentZ: OPPONENT_Z,
     arenaRadius: ARENA_RADIUS,
+    weaponId: identity.weaponId,
   });
   const caRef = useRef<ChromaticAberrationEffect | null>(null);
   const vigRef = useRef<VignetteEffect | null>(null);
@@ -270,7 +308,9 @@ function DuelGame({
   }, []);
 
   const [debug, setDebug] = useState(false);
-  const [tuning, setTuning] = useState<DuelTuning>(() => tuningFromWeapon(PLASMA_BLADE));
+  const [tuning, setTuning] = useState<DuelTuning>(() =>
+    tuningFromWeapon(duel.weapon.current),
+  );
 
   useEffect(() => {
     duel.updateWeapon(tuningToWeaponPatch(tuning));
@@ -287,7 +327,7 @@ function DuelGame({
   }, []);
 
   const resetTuning = useCallback(() => {
-    setTuning(tuningFromWeapon(PLASMA_BLADE));
+    setTuning(tuningFromWeapon(BASIC_SWORD));
   }, []);
 
   const cameraInit = useMemo(
@@ -314,8 +354,12 @@ function DuelGame({
         <GameStage
           duel={duel}
           debug={debug}
-          playerAccent={identity.saberColor}
-          opponentAccent={OPPONENT_ACCENT}
+          playerAccent={playerCharacter.saberColor}
+          opponentAccent={opponentCharacter.saberColor}
+          playerModelUrl={playerCharacter.modelUrl}
+          opponentModelUrl={opponentCharacter.modelUrl}
+          playerWeaponId={identity.weaponId}
+          opponentWeaponId="basic"
           caRef={caRef}
           vigRef={vigRef}
           aiEnabled={true}
@@ -348,9 +392,9 @@ function DuelGame({
         onResetMatch={duel.resetMatch}
         onLeave={onLeave}
         playerName={identity.name}
-        playerAccent={identity.saberColor}
+        playerAccent={playerCharacter.saberColor}
         opponentName="AI Bot"
-        opponentAccent={OPPONENT_ACCENT}
+        opponentAccent={opponentCharacter.saberColor}
       />
       {debug && (
         <DuelDebugPanel tuning={tuning} onChange={setTuning} onReset={resetTuning} />
@@ -366,10 +410,20 @@ function RankedDuelGame({
   identity: Identity;
   onLeave: () => void;
 }) {
+  const playerCharacter = useMemo(
+    () =>
+      CHARACTER_PRESETS.find((c) => c.id === identity.characterId) ??
+      CHARACTER_PRESETS[0]!,
+    [identity.characterId],
+  );
   const ranked = useRankedMatch({
     initialPlayerZ: PLAYER_Z,
     initialOpponentZ: OPPONENT_Z,
-    identity: { name: identity.name, saberColor: identity.saberColor },
+    identity: {
+      name: identity.name,
+      saberColor: identity.saberColor,
+      weaponId: identity.weaponId,
+    },
     roomId: directRoomIdForIdentity(identity),
     recordResult: identity.mode === "ranked",
   });
@@ -397,7 +451,15 @@ function RankedDuelGame({
   );
 
   const opponentName = ranked.summary.opponent?.name ?? "Opponent";
-  const opponentAccent = ranked.summary.opponent?.saberColor ?? OPPONENT_ACCENT;
+  const opponentCharacter = useMemo(
+    () =>
+      ranked.summary.opponent
+        ? characterByColor(ranked.summary.opponent.saberColor)
+        : pickOpponentCharacter(identity.characterId),
+    [identity.characterId, ranked.summary.opponent],
+  );
+  const opponentAccent = opponentCharacter.saberColor;
+  const opponentWeaponId: WeaponId = ranked.summary.opponent?.weaponId ?? "basic";
   const handleLeave = useCallback(() => {
     ranked.leaveMatch();
     onLeave();
@@ -422,8 +484,12 @@ function RankedDuelGame({
         <GameStage
           duel={ranked}
           debug={debug}
-          playerAccent={identity.saberColor}
+          playerAccent={playerCharacter.saberColor}
           opponentAccent={opponentAccent}
+          playerModelUrl={playerCharacter.modelUrl}
+          opponentModelUrl={opponentCharacter.modelUrl}
+          playerWeaponId={identity.weaponId}
+          opponentWeaponId={opponentWeaponId}
           caRef={caRef}
           vigRef={vigRef}
           aiEnabled={false}
@@ -455,7 +521,7 @@ function RankedDuelGame({
         tickKey={hudKey}
         onResetMatch={handleLeave}
         playerName={identity.name}
-        playerAccent={identity.saberColor}
+        playerAccent={playerCharacter.saberColor}
         opponentName={opponentName}
         opponentAccent={opponentAccent}
       />

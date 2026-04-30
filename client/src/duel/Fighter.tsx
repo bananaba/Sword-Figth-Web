@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { Trail, useFBX } from "@react-three/drei";
 import * as THREE from "three";
 import * as SkeletonUtils from "three/examples/jsm/utils/SkeletonUtils.js";
-import type { AttackKind, GuardSnapshot, Vec2 } from "@vibejam/shared";
+import type { AttackKind, GuardSnapshot, Vec2, WeaponId } from "@vibejam/shared";
 import { ARENA_RADIUS } from "./Arena3D";
 
 export const SHOULDER_Y = 1.15;
@@ -50,7 +50,6 @@ const ATTACK_TIMESCALE_MIN = 0.25;
 const FALL_GRAVITY = 14.0;
 const FALL_MAX_Y = -12.0;
 const IDLE_ARM_REACH = 0.46;
-const IDLE_HANDLE_SPACING = 0.16;
 const AUTHORED_SWORD_GRIP_OFFSET = 0.06;
 
 const starShape = (() => {
@@ -122,14 +121,126 @@ interface FighterProps {
    * Side identity color (hex). Drives **sword guard glow** (full-blade
    * emissive lerps 0 → 3.0 only while `s.guard.active`, dark otherwise) +
    * drei `<Trail>` color (always on, so swing motion stays readable as a
-   * side-colored streak). Sword body is neutral black placeholder until
-   * the post-jam sword redesign — keeping the body neutral means the
-   * accent emissive flash is a high-contrast, all-angles tell when guard
-   * activates. Character body stays neutral throughout
+   * side-colored streak). Sword body stays neutral so the accent emissive
+   * flash is a high-contrast, all-angles tell when guard activates.
+   * Character body stays neutral throughout
    * (`research_character_weapon_customization_20260429.md` §3.3).
    */
   accentColor: string;
+  /**
+   * Which sword silhouette to render — basic / charge / rapier. Composite
+   * mesh built once per weapon (handle/guard/blade), then animated as a
+   * single rigid unit attached to the right hand or idle IK grip pose.
+   */
+  weaponId: WeaponId;
 }
+
+/**
+ * Style spec for the composite sword model. The blade is the only segment
+ * that scales with `s.attack` length (thrust extends, slice/idle stay at
+ * `bladeLength`); handle/crossguard/pommel sit at fixed sizes around the
+ * grip pivot at swordRef y=0.
+ */
+interface SwordStyle {
+  blade: {
+    /** Width of the flat blade (X). */
+    width: number;
+    /** Thickness of the blade (Z, into the camera). Slim blades read as rapier-like. */
+    thickness: number;
+    /** Hue family for the blade body. Accent color drives emissive separately. */
+    color: string;
+    /** If set, an inner emissive core mesh runs the length of the blade (charge sword energy). */
+    coreWidth?: number;
+  };
+  handle: {
+    /** Length of the grip below y=0. Pommel sits at -length, crossguard at 0. */
+    length: number;
+    radius: number;
+    color: string;
+  };
+  crossguard: {
+    /** Total width of the bar (X). */
+    width: number;
+    /** Vertical thickness (Y). */
+    height: number;
+    /** Z thickness so it shows from the front. */
+    depth: number;
+    color: string;
+  };
+  pommel: {
+    radius: number;
+    color: string;
+    /** "sphere" (default) renders an orb. "disc" renders a flat capstan — used
+     *  on the rapier so its silhouette differs from the basic/charge orbs. */
+    shape?: "sphere" | "disc";
+    /** When true, the pommel uses the always-on accent emissive material —
+     *  charge sword lights up the handle butt as an "energy reservoir". */
+    emissive?: boolean;
+  };
+  /** Small decorative bead at each crossguard tip — used by the basic sword
+   *  as a steel finial. Removed from the charge sword (the bar-tip-with-orb
+   *  silhouette read as awkward in playtest). */
+  guardCaps?: {
+    radius: number;
+  };
+  /** Disc-shaped emissive collar sitting on top of the crossguard, around
+   *  the blade base. Reads as an "energy intake" feature on the charge
+   *  sword — bright accent feature without adding length to the cross-bar. */
+  collar?: {
+    outerRadius: number;
+    thickness: number;
+  };
+  /** Torus-shaped basket / swept guard wrapping the upper handle. Used by the
+   *  rapier so its silhouette reads as a fencing weapon at a glance. */
+  basket?: {
+    radius: number;
+    tube: number;
+  };
+}
+
+// Handle length is sized to fit *both* hands of the idle two-hand grip. The
+// idle IK lays the right hand near the cross-guard end and the left hand
+// near the pommel; the gap between them is roughly handle.length minus the
+// padding constants in `useFrame`. Going below ~0.22 makes the bottom hand
+// slip past the pommel onto thin air, which is what shipped in the first
+// pass and read as "one hand on the blade".
+const SWORD_STYLES: Record<WeaponId, SwordStyle> = {
+  basic: {
+    // Plain straight long-sword silhouette. Small steel beads on the
+    // crossguard tips give the otherwise neutral profile a focal point so
+    // it reads as "deliberately balanced", not "missing detail".
+    blade: { width: 0.055, thickness: 0.014, color: "#cbd5e1" },
+    handle: { length: 0.26, radius: 0.024, color: "#1e293b" },
+    crossguard: { width: 0.22, height: 0.025, depth: 0.04, color: "#94a3b8" },
+    pommel: { radius: 0.034, color: "#94a3b8" },
+    guardCaps: { radius: 0.022 },
+  },
+  charge: {
+    // Wider, heavier blade with a glowing inner core. The differentiator
+    // is now *emissive bookends*: a glowing collar at the blade base
+    // ("energy intake" feeding the core) and a glowing pommel orb at the
+    // handle butt ("energy reservoir"). With the blade core itself, the
+    // weapon has three accent-coloured glow points — clearly the
+    // power-user silhouette without resorting to bar-tip orbs (which
+    // read as "stick with balls" in playtest).
+    blade: { width: 0.092, thickness: 0.022, color: "#475569", coreWidth: 0.034 },
+    handle: { length: 0.30, radius: 0.030, color: "#0f172a" },
+    crossguard: { width: 0.22, height: 0.05, depth: 0.075, color: "#cbd5e1" },
+    pommel: { radius: 0.054, color: "#cbd5e1", emissive: true },
+    collar: { outerRadius: 0.07, thickness: 0.028 },
+  },
+  rapier: {
+    // Thin wand-like blade with a swept basket guard (torus around the
+    // upper handle) and a flat capstan-style pommel. The basket is the
+    // primary silhouette differentiator — at any zoom, the rapier reads as
+    // a fencing weapon rather than a sword.
+    blade: { width: 0.025, thickness: 0.01, color: "#e2e8f0" },
+    handle: { length: 0.24, radius: 0.020, color: "#1e293b" },
+    crossguard: { width: 0.16, height: 0.02, depth: 0.035, color: "#cbd5e1" },
+    pommel: { radius: 0.038, color: "#cbd5e1", shape: "disc" },
+    basket: { radius: 0.075, tube: 0.011 },
+  },
+};
 
 /**
  * Derive a 3-stop palette from a single accent hex by sliding lightness in
@@ -216,9 +327,10 @@ interface SwordPose {
 const IDLE_OPACITY = 0.32;
 const ACTIVE_OPACITY = 1.0;
 
-export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
+export function Fighter({ state, modelUrl, accentColor, weaponId }: FighterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const swordRef = useRef<THREE.Group>(null);
+  const bladeRef = useRef<THREE.Group>(null);
   const stunGroupRef = useRef<THREE.Group>(null);
   const currentAnimationRef = useRef<{ name: FighterAnimationName; token: string } | null>(
     null,
@@ -265,23 +377,65 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
     };
   }, [animation]);
 
-  // Sword body is neutral medium grey (placeholder — sword redesign deferred
-  // to post-jam). Black was too invisible in low-light parts of the arena;
-  // white would blend with the bright water reflections. Mid-grey reads as
-  // a clear silhouette against both. The guard tell drives the **whole
-  // blade's emissive intensity** from 0 → high while `s.guard.active`, so
-  // the sword lights up accent from any camera angle. (Earlier attempt used
-  // a Fresnel rim shader, which is view-dependent — broad-face-on views had
-  // dot≈1 → rim≈0, sword looked uncolored. Per-fragment emissive sidesteps
-  // the angle dependence.)
-  const swordMaterial = useMemo(
+  const style = useMemo(() => SWORD_STYLES[weaponId], [weaponId]);
+
+  // Blade body material — neutral colour drawn from the weapon style, with
+  // accent emissive layered on. The guard tell lerps emissiveIntensity 0 →
+  // 3.0 only while `s.guard.active`, so the whole blade lights up accent
+  // from any camera angle (per-fragment emissive sidesteps the
+  // view-dependence problem that bit the earlier Fresnel rim attempt).
+  const bladeMaterial = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: "#9ca3af",
-        metalness: 0.7,
-        roughness: 0.3,
+        color: style.blade.color,
+        metalness: 0.75,
+        roughness: 0.28,
         emissive: new THREE.Color(accentColor),
         emissiveIntensity: 0,
+      }),
+    [accentColor, style.blade.color],
+  );
+
+  // Charge sword's inner core glows constantly — the "stored energy" tell
+  // for its huge counter knockback. The same emissive lerp is applied so
+  // the guard tell still flashes the whole blade.
+  const coreMaterial = useMemo(() => {
+    if (!style.blade.coreWidth) return null;
+    return new THREE.MeshStandardMaterial({
+      color: accentColor,
+      emissive: new THREE.Color(accentColor),
+      emissiveIntensity: 1.6,
+      toneMapped: false,
+    });
+  }, [accentColor, style.blade.coreWidth]);
+
+  const handleMaterial = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: style.handle.color, roughness: 0.6 }),
+    [style.handle.color],
+  );
+  const fittingMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: style.crossguard.color,
+        metalness: 0.85,
+        roughness: 0.32,
+      }),
+    [style.crossguard.color],
+  );
+
+  // Always-on accent material — used for the charge sword's emissive guard
+  // orbs and any decorative jewel that should glow regardless of guard
+  // state. Sits at intensity 1.0 so Bloom (threshold 0.85) catches it but
+  // it doesn't drown out the blade's stronger guard flash.
+  const accentMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: accentColor,
+        emissive: new THREE.Color(accentColor),
+        emissiveIntensity: 1.0,
+        metalness: 0.4,
+        roughness: 0.3,
+        toneMapped: false,
       }),
     [accentColor],
   );
@@ -329,6 +483,13 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
         fallStartRef.current = null;
         groupRef.current.position.y = 0;
       }
+      // We just mutated group.position/rotation; flush the matrices so any
+      // localToWorld / worldToLocal calls below (used by the arm IK and the
+      // post-IK guard sword anchor) see the fresh transform. Without this,
+      // matrix updates only happen on R3F's pre-render pass — making this
+      // frame's IK target one frame stale and the hand bone world position
+      // we read after IK come from the previous frame's group pose.
+      groupRef.current.updateMatrixWorld(true);
     }
 
     const visuallyIdle =
@@ -352,34 +513,107 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
 
       if (desiredAnimation.name === "idle" && groupRef.current) {
         const bladeDir = toLocal.clone().sub(fromLocal).normalize();
-        const leftHandLocal = fromLocal.clone();
+        // Both hands sit *along the handle*, below the cross-guard at
+        // swordRef y=0 (the handle mesh spans y=-style.handle.length..0).
+        // Right (dominant) hand near the cross-guard end, left hand near
+        // the pommel — `bladeDir` points grip→tip so we use *negative*
+        // multipliers to walk down the handle.
+        const handleLen = style.handle.length;
+        const topOffset = -Math.max(0.025, handleLen * 0.12);
+        const bottomOffset = -handleLen + Math.max(0.025, handleLen * 0.12);
         const rightHandLocal = fromLocal
           .clone()
-          .add(bladeDir.multiplyScalar(IDLE_HANDLE_SPACING));
+          .add(bladeDir.clone().multiplyScalar(topOffset));
+        const leftHandLocal = fromLocal
+          .clone()
+          .add(bladeDir.clone().multiplyScalar(bottomOffset));
         applyIdleArmIk(rig.leftArm, groupRef.current.localToWorld(leftHandLocal));
         applyIdleArmIk(rig.rightArm, groupRef.current.localToWorld(rightHandLocal));
         model.updateMatrixWorld(true);
+
+        // Re-anchor the sword on the *actual* post-IK right hand position.
+        // For idle aim where the IK reaches its target, this is a no-op
+        // (handLocal == rightHandLocal). For the guard pose where the
+        // resolver's segment grip can sit past arm reach, the IK stops
+        // short and the hand ends up somewhere closer to the body — we
+        // translate the sword onto that real hand position so the handle
+        // actually ends up *in* the hand. The perpendicular block
+        // direction (`bladeDir`) is preserved end-to-end, so resolver
+        // angle detection is unchanged.
+        if (rig.rightArm) {
+          const handWorld = rig.rightArm.hand.getWorldPosition(new THREE.Vector3());
+          const handLocal = groupRef.current.worldToLocal(handWorld);
+          fromLocal = handLocal
+            .clone()
+            .sub(bladeDir.clone().multiplyScalar(topOffset));
+          toLocal = fromLocal
+            .clone()
+            .add(bladeDir.clone().multiplyScalar(ACTIVE_BLADE_LENGTH));
+
+          const finalLeftHandLocal = fromLocal
+            .clone()
+            .add(bladeDir.clone().multiplyScalar(bottomOffset));
+          const sideGuard = s.guard.active && Math.abs(fromLocal.x) > BODY_HALF_WIDTH * 0.55;
+          if (sideGuard) {
+            finalLeftHandLocal.x = -BODY_HALF_WIDTH * 0.38;
+            finalLeftHandLocal.y = THREE.MathUtils.clamp(
+              fromLocal.y - 0.08,
+              SHOULDER_Y - 0.22,
+              SHOULDER_Y + 0.18,
+            );
+          }
+          applyIdleArmIk(
+            rig.leftArm,
+            groupRef.current.localToWorld(finalLeftHandLocal),
+          );
+          const bladeDirWorld = bladeDir
+            .clone()
+            .applyQuaternion(groupRef.current.getWorldQuaternion(new THREE.Quaternion()))
+            .normalize();
+          alignHandGripAxisToWorldDirection(rig.rightArm, bladeDirWorld);
+          if (!sideGuard) {
+            alignHandGripAxisToWorldDirection(rig.leftArm, bladeDirWorld);
+          }
+          model.updateMatrixWorld(true);
+        }
       } else if (isAuthoredAnimation && rig.rightHand && groupRef.current) {
         const handSword = authoredSwordSegmentFromHand(rig.rightHand, groupRef.current);
         fromLocal = handSword.fromLocal;
         toLocal = handSword.toLocal;
       }
 
-      orientSegment(swordRef.current, fromLocal, toLocal);
-      // Sword body stays neutral black across all phases; pose.color /
-      // pose.emissive are intentionally unused (kept on the SwordPose type
-      // for the post-jam sword redesign).
+      // Anchor the composite sword at the grip and orient toward the tip —
+      // this lets the static handle/crossguard/pommel meshes sit at fixed
+      // sizes around y=0 while the blade alone scales to the segment length.
+      // (The earlier single-box version used midpoint+Y-scale, which would
+      // stretch the crossguard during a thrust extension.)
+      anchorSwordAtGrip(swordRef.current, fromLocal, toLocal);
+      const segmentLength = fromLocal.distanceTo(toLocal);
+      if (bladeRef.current) {
+        bladeRef.current.scale.y = Math.max(0.001, segmentLength);
+        bladeRef.current.position.y = segmentLength / 2;
+      }
 
-      // Guard tell: full-blade emissive lerps 0 ↔ 3.0 — the entire sword
-      // lights up accent while guarding, dark otherwise. ~3 frames at 60fps
-      // for a sharp on/off read; Bloom (threshold 0.85) catches the accent
-      // glow from every angle.
-      swordMaterial.emissiveIntensity = THREE.MathUtils.lerp(
-        swordMaterial.emissiveIntensity,
-        s.guard.active ? 3.0 : 0,
+      // Guard tell: blade emissive lerps 0 ↔ 1.5. Bloom (threshold 0.85)
+      // still catches the accent glow from every angle, but kept low
+      // enough that the bloom halo no longer bleeds onto the
+      // (non-emissive) handle / cross-guard / pommel — earlier 3.0 made
+      // the whole sword silhouette read as glowing. Charge sword's
+      // always-on core sits on top of this and brightens further when
+      // guard activates so it still pulses, just within Bloom's safe
+      // band.
+      bladeMaterial.emissiveIntensity = THREE.MathUtils.lerp(
+        bladeMaterial.emissiveIntensity,
+        s.guard.active ? 1.5 : 0,
         0.22,
       );
-
+      if (coreMaterial) {
+        coreMaterial.emissiveIntensity = THREE.MathUtils.lerp(
+          coreMaterial.emissiveIntensity,
+          s.guard.active ? 2.4 : 1.0,
+          0.22,
+        );
+      }
     }
 
     if (stunGroupRef.current && groupRef.current) {
@@ -430,21 +664,156 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
         </mesh>
       </group>
       <group ref={swordRef}>
-        <mesh castShadow>
-          <boxGeometry args={[0.05, 1.0, 0.05]} />
-          <primitive object={swordMaterial} attach="material" />
-        </mesh>
-        <Trail
-          width={0.22}
-          length={1.6}
-          color={trailColor}
-          attenuation={(t) => t * t}
-          decay={3}
-        >
-          <mesh position={[0, 0.5, 0]} visible={false}>
-            <sphereGeometry args={[0.01, 4, 4]} />
+        {/* Pommel — sits below the grip at the very base of the sword.
+            Rapier uses a flat capstan disc; basic/charge use a sphere
+            (the orb shape reads heavier, matching their broader silhouette).
+            Charge sword's pommel is emissive — the "energy reservoir" that
+            feeds the blade core via the upper collar. */}
+        {style.pommel.shape === "disc" ? (
+          <mesh
+            position={[0, -style.handle.length - style.pommel.radius * 0.4, 0]}
+            castShadow
+            material={fittingMaterial}
+          >
+            <cylinderGeometry
+              args={[style.pommel.radius, style.pommel.radius, style.pommel.radius * 0.7, 16]}
+            />
           </mesh>
-        </Trail>
+        ) : (
+          <mesh
+            position={[0, -style.handle.length, 0]}
+            castShadow
+            material={style.pommel.emissive ? accentMaterial : fittingMaterial}
+          >
+            <sphereGeometry args={[style.pommel.radius, 12, 8]} />
+          </mesh>
+        )}
+        {/* Handle/grip — fixed cylinder between pommel and crossguard. */}
+        <mesh
+          position={[0, -style.handle.length / 2, 0]}
+          castShadow
+          material={handleMaterial}
+        >
+          <cylinderGeometry
+            args={[style.handle.radius, style.handle.radius, style.handle.length, 14]}
+          />
+        </mesh>
+        {/* Crossguard — perpendicular bar at y=0 (where the blade starts).
+            Width runs along *Z* (the blade's broadside axis, toward the
+            camera/opponent), thickness along *X* (the cutting-edge axis).
+            This matches the blade's X/Z layout (`<boxGeometry args=[
+            thickness, length, width]>` below) so the cross is square to
+            the flat of the blade — a real sword has its quillons in the
+            same plane as the broadside, not perpendicular to it. */}
+        <mesh position={[0, 0, 0]} castShadow material={fittingMaterial}>
+          <boxGeometry
+            args={[style.crossguard.depth, style.crossguard.height, style.crossguard.width]}
+          />
+        </mesh>
+        {/* Crossguard tip ornaments — small steel beads on the basic
+            sword as a focal point on the otherwise plain hilt. Sit on the
+            *Z* axis (the crossguard's width direction). */}
+        {style.guardCaps && (
+          <>
+            <mesh
+              position={[0, 0, style.crossguard.width / 2]}
+              castShadow
+              material={fittingMaterial}
+            >
+              <sphereGeometry args={[style.guardCaps.radius, 12, 8]} />
+            </mesh>
+            <mesh
+              position={[0, 0, -style.crossguard.width / 2]}
+              castShadow
+              material={fittingMaterial}
+            >
+              <sphereGeometry args={[style.guardCaps.radius, 12, 8]} />
+            </mesh>
+          </>
+        )}
+        {/* Emissive collar — flat disc sitting flush above the cross-guard,
+            wrapping the blade base. Reads as the "energy intake" port on
+            the charge sword. Disc plane = X-Z (perpendicular to the
+            blade's length axis Y), radius noticeably wider than the
+            handle but narrower than the cross-guard so it sits *between*
+            the two without competing with either. */}
+        {style.collar && (
+          <mesh
+            position={[0, style.crossguard.height / 2 + style.collar.thickness / 2, 0]}
+            castShadow
+            material={accentMaterial}
+          >
+            <cylinderGeometry
+              args={[
+                style.collar.outerRadius,
+                style.collar.outerRadius,
+                style.collar.thickness,
+                20,
+              ]}
+            />
+          </mesh>
+        )}
+        {/* Basket / swept guard — torus wrapping the cross-guard so it
+            reads as a fencing weapon at any zoom. Sits at y=0 (the
+            crossguard plane) rather than mid-handle so the basket and
+            crossguard share a hilt; ring axis = blade length (+Y), ring
+            plane = X-Z (the broadside plane the crossguard now lives in).
+            Used by the rapier. */}
+        {style.basket && (
+          <mesh
+            position={[0, 0, 0]}
+            rotation={[Math.PI / 2, 0, 0]}
+            castShadow
+            material={fittingMaterial}
+          >
+            <torusGeometry args={[style.basket.radius, style.basket.tube, 8, 24]} />
+          </mesh>
+        )}
+        {/*
+          Blade group — only this scales with the segment length. The
+          mesh inside is a unit-tall flat box; bladeRef.scale.y stretches
+          it to fit grip→tip while bladeRef.position.y centres it at
+          length/2 so the bottom edge sits at the crossguard.
+        */}
+        <group ref={bladeRef}>
+          <mesh castShadow material={bladeMaterial}>
+            {/*
+              Edge orientation: anchorSwordAtGrip rotates this group around
+              local +Z so its +Y aligns with the segment. That means the
+              instantaneous swing motion (perpendicular to the segment, in
+              the X-Y blade plane) maps to the blade's local +X — and the
+              opponent sits along the blade's local +Z. Putting the *thin*
+              dimension on local X means the cutting edge leads the swing
+              (canonical "swing with the blade, not the flat"); putting
+              *width* on local Z faces the blade's broadside toward the
+              opponent so the silhouette reads as a real sword profile from
+              the over-the-shoulder camera, instead of a thin line.
+            */}
+            <boxGeometry args={[style.blade.thickness, 1.0, style.blade.width]} />
+          </mesh>
+          {/* Charge-sword inner core. Same X/Z layout as the outer blade
+              so the energy seam runs along the cutting edge. */}
+          {coreMaterial && style.blade.coreWidth && (
+            <mesh material={coreMaterial}>
+              <boxGeometry
+                args={[style.blade.thickness * 1.4, 0.92, style.blade.coreWidth]}
+              />
+            </mesh>
+          )}
+          {/* Trail anchor sits at the blade tip (local y=0.5 inside the
+              unit blade → world y=length once scaled). */}
+          <Trail
+            width={0.22}
+            length={1.6}
+            color={trailColor}
+            attenuation={(t) => t * t}
+            decay={3}
+          >
+            <mesh position={[0, 0.5, 0]} visible={false}>
+              <sphereGeometry args={[0.01, 4, 4]} />
+            </mesh>
+          </Trail>
+        </group>
       </group>
     </group>
   );
@@ -783,6 +1152,29 @@ function alignBoneToWorldDirection(
   );
 }
 
+function alignHandGripAxisToWorldDirection(
+  arm: ArmRig | null,
+  desiredDirection: THREE.Vector3,
+): void {
+  if (!arm || desiredDirection.lengthSq() < 1e-5) return;
+  const hand = arm.hand;
+  hand.updateWorldMatrix(true, false);
+  const currentDirection = new THREE.Vector3(0, 1, 0)
+    .applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion()))
+    .normalize();
+  const delta = new THREE.Quaternion().setFromUnitVectors(
+    currentDirection,
+    desiredDirection.clone().normalize(),
+  );
+  const currentWorldQuat = hand.getWorldQuaternion(new THREE.Quaternion());
+  const targetWorldQuat = delta.multiply(currentWorldQuat);
+  const parentWorldQuat = hand.parent?.getWorldQuaternion(new THREE.Quaternion());
+  const targetLocalQuat = parentWorldQuat
+    ? parentWorldQuat.invert().multiply(targetWorldQuat)
+    : targetWorldQuat;
+  hand.quaternion.slerp(targetLocalQuat, 0.85);
+}
+
 function authoredSwordSegmentFromHand(
   hand: THREE.Bone,
   fighterGroup: THREE.Group,
@@ -813,22 +1205,6 @@ function authoredSwordSegmentFromHand(
 
 const GRIP_2D: Vec2 = { x: 0, y: SHOULDER_Y };
 const ACTIVE_BLADE_LENGTH = 1.2;
-/**
- * 가드 시 segment center가 chest에서 pointer 쪽으로 이동할 수 있는 최대 반경.
- * 실제 lean 거리는 `min(|pointer - chest|, GUARD_LEAN_MAX_RADIUS)` —
- * 마우스가 chest 안쪽에 있으면 lean이 작아 chest 정중앙에서 회전하고,
- * 멀어질수록 그쪽으로 따라가다 이 반경 원에서 클램프된다. 즉 segment center가
- * 반경 0~MAX의 disc 안에서 자유롭게 이동 (원 *위*가 아닌 원 *안*).
- *
- * 검 절반(0.6) 이상이면 검 끝이 chest를 완전히 벗어나는 과한 자세 → 그 이하로.
- * 어깨/팔이 닿을 수 있는 거리(≈ 0.5)가 자연스러움 — 마우스를 chest에서 멀리
- * 두면 대부분 max lean이고, 가까이 두면 chest 회전에 가까운 부드러운 전환.
- *
- * 게임 로직 영향 0%: shared/combat/resolver.ts의 angle-only guard model이
- * `tip - grip` 방향만 사용하고 segment 위치는 검사하지 않으므로, 시각만
- * lean되고 perpendicularity 판정은 그대로 유지된다.
- */
-const GUARD_LEAN_MAX_RADIUS = 0.5;
 
 /**
  * Build a fixed-length blade segment whose **tip exactly tracks the cursor**
@@ -961,14 +1337,42 @@ function currentSwordPose(
   }
 
   if (s.guard.active) {
-    // `s.bladeTipBladePlane`은 player의 경우 마우스 위치, opponent의 경우
-    // server가 보낸 predicted blade tip(랭크) 또는 가드 segment의 tip(솔로) —
-    // 어느 쪽이든 chest로부터 한 점이라 lean direction/distance를 동일 공식으로
-    // 처리할 수 있다.
-    const leaned = leanedGuardSegment(s.guard, s.bladeTipBladePlane);
+    // Put the blade's blocking surface toward the pointer, while keeping
+    // the resolver-provided perpendicular direction. The position is visual
+    // only; block rules use the direction (`tip - grip`).
+    const MAX_GUARD_OFFSET = 0.45;
+    const segDx = s.guard.tip.x - s.guard.grip.x;
+    const segDy = s.guard.tip.y - s.guard.grip.y;
+    const segLen = Math.hypot(segDx, segDy);
+    const perpDirX = segLen > 1e-5 ? segDx / segLen : 1;
+    const perpDirY = segLen > 1e-5 ? segDy / segLen : 0;
+
+    const dx = s.bladeTipBladePlane.x - GRIP_2D.x;
+    const dy = s.bladeTipBladePlane.y - GRIP_2D.y;
+    const mouseDist = Math.hypot(dx, dy);
+    const aimX = mouseDist > 1e-5 ? dx / mouseDist : 0;
+    const aimY = mouseDist > 1e-5 ? dy / mouseDist : 1;
+    const offset = Math.min(mouseDist, MAX_GUARD_OFFSET);
+    const center = {
+      x: GRIP_2D.x + aimX * offset,
+      y: GRIP_2D.y + aimY * offset,
+    };
+
+    const half = ACTIVE_BLADE_LENGTH / 2;
+    const endA = {
+      x: center.x - perpDirX * half,
+      y: center.y - perpDirY * half,
+    };
+    const endB = {
+      x: center.x + perpDirX * half,
+      y: center.y + perpDirY * half,
+    };
+    const aIsGrip = endA.y < endB.y || (endA.y === endB.y && endA.x <= endB.x);
+    const grip = aIsGrip ? endA : endB;
+    const tip = aIsGrip ? endB : endA;
     return {
-      fromBladePlane: leaned.grip,
-      toBladePlane: leaned.tip,
+      fromBladePlane: grip,
+      toBladePlane: tip,
       color: "#ffffff",
       emissive: palette.guard,
       emissiveIntensity: 2.2,
@@ -998,70 +1402,33 @@ function lerpVec(a: Vec2, b: Vec2, t: number): Vec2 {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
-/**
- * 가드 segment center를 chest에서 pointer 쪽으로 (마우스 거리에 비례한) 가변
- * 거리만큼 이동시킨다. segment 방향(grip→tip)은 보존되므로 resolver의
- * perpendicularity 판정에는 영향이 없고, 시각만 자유롭게 따라온다.
- *
- * 이전 fixed-distance 버전은 segment center가 항상 chest로부터 일정 반경의
- * **원 위**에 놓였다. 그러면 가드가 항상 한쪽 끝까지 lean되어 마우스가
- * chest 가까이 있을 때도 어색하게 어깨 라인까지 가 있는 자세가 됐다.
- * 이번 버전은 center를 반경 `[0, GUARD_LEAN_MAX_RADIUS]`의 **원판(disc)**
- * 안으로 풀어서, 마우스가 chest 가까우면 거의 회전, 멀면 max lean으로
- * 부드럽게 보간된다.
- *
- * pointer는 `FighterVisualState.bladeTipBladePlane` 사용:
- *   - player (솔로/랭크): mouse world position
- *   - opponent (랭크): server에서 broadcast된 predicted blade tip
- *   - opponent (솔로): 가드 활성 시 `o.guard.tip` (chest 중심 segment의 tip)
- *     → mouseDist = bladeLength/2 = 0.6, max lean에서 클램프되어 가드 방향으로
- *     일관되게 max lean. AI에 의도한 pointer 거리 정보가 없어 이게 fallback.
- */
-function leanedGuardSegment(
-  guard: GuardSnapshot,
-  pointer: Vec2,
-): { grip: Vec2; tip: Vec2 } {
-  const segDx = guard.tip.x - guard.grip.x;
-  const segDy = guard.tip.y - guard.grip.y;
-  const segLen = Math.hypot(segDx, segDy);
-  // degenerate: pointer가 chest 위에 있을 때 buildPerpendicularGuard가
-  // 0 길이 segment를 줄 수 있다. 그 경우 lean 없이 그대로 반환.
-  if (segLen < 1e-5) return { grip: guard.grip, tip: guard.tip };
-
-  const dx = pointer.x - GRIP_2D.x;
-  const dy = pointer.y - GRIP_2D.y;
-  const mouseDist = Math.hypot(dx, dy);
-  if (mouseDist < 1e-5) {
-    // pointer ≈ chest → lean 0, segment 그대로 (chest 중심 회전).
-    return { grip: guard.grip, tip: guard.tip };
-  }
-
-  const leanDist = Math.min(mouseDist, GUARD_LEAN_MAX_RADIUS);
-  const cx = GRIP_2D.x + (dx / mouseDist) * leanDist;
-  const cy = GRIP_2D.y + (dy / mouseDist) * leanDist;
-  return {
-    grip: { x: cx - segDx / 2, y: cy - segDy / 2 },
-    tip: { x: cx + segDx / 2, y: cy + segDy / 2 },
-  };
-}
-
 export const SWORD_FORWARD_OFFSET = 0.35;
 
 function bladePlaneToLocal(point: Vec2, facing: number): THREE.Vector3 {
   return new THREE.Vector3(facing * point.x, point.y, SWORD_FORWARD_OFFSET);
 }
 
-function orientSegment(group: THREE.Group, from: THREE.Vector3, to: THREE.Vector3): void {
-  const mid = from.clone().add(to).multiplyScalar(0.5);
+/**
+ * Pin the composite sword at its **grip** (segment `from`) and orient local
+ * +Y along the segment toward `to`. Crucially, the group itself is *not*
+ * scaled — only the inner blade group stretches with segment length. This
+ * keeps handle/crossguard/pommel meshes at fixed authored sizes (the
+ * earlier midpoint+Y-scale approach distorted those parts during a thrust
+ * extension where the segment grew to ~2.6 units).
+ */
+function anchorSwordAtGrip(
+  group: THREE.Group,
+  from: THREE.Vector3,
+  to: THREE.Vector3,
+): void {
+  group.position.copy(from);
+  group.scale.set(1, 1, 1);
   const dir = to.clone().sub(from);
-  const length = dir.length();
-  if (length < 1e-5) {
-    group.scale.set(0, 0, 0);
+  if (dir.lengthSq() < 1e-10) {
+    group.quaternion.identity();
     return;
   }
-  group.position.copy(mid);
-  group.scale.set(1, length, 1);
   const up = new THREE.Vector3(0, 1, 0);
-  const q = new THREE.Quaternion().setFromUnitVectors(up, dir.clone().normalize());
+  const q = new THREE.Quaternion().setFromUnitVectors(up, dir.normalize());
   group.quaternion.copy(q);
 }
