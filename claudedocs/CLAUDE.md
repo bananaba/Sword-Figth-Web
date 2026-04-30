@@ -16,7 +16,8 @@
 | `research_chambara_20260428.md` | Switch Sports Chambara 메카닉 분석 | 게임 룰의 진실 소스 — slice/thrust/guard 상호작용 |
 | `research_chambara_visuals_20260429.md` | R3F 시각 처리 가이드 (Bloom, 트레일, 카툰 물) | **Day 1 시각 P0 작업 순서**의 근거 §7 |
 | `research_impact_feedback_20260429.md` | 타격감 (시각·청각·햅틱·시간·공간 5축) | 임팩트 링/셰이크/SFX 구현 가이드, BLOCK/HIT/PIERCE/KO별 시퀀스 |
-| `research_character_weapon_customization_20260429.md` | 캐릭터·라이트세이버 디자인 + 잼 커스터마이징 스코프 + Quaternius/Mixamo/Tripo3D 파이프라인 + IP-안전 네이밍 | 후드 몽크 권장 §2.4, 마젠타 사이드 ID §3.3, 잼 미니멈(이름+색) §4.3, Mixamo 검술 6종 §5.2, `BASIC_SWORD`→`PLASMA_BLADE` §7.3 |
+| `research_character_weapon_customization_20260429.md` | 캐릭터·라이트세이버 디자인 + 잼 커스터마이징 스코프 + Quaternius/Mixamo/Tripo3D 파이프라인 + IP-안전 네이밍 | 후드 몽크 권장 §2.4, 마젠타 사이드 ID §3.3, 잼 미니멈(이름+색) §4.3, Mixamo 검술 6종 §5.2, `BASIC_SWORD`→`PLASMA_BLADE` §7.3 — Phase 9.5/12/16 근거 |
+| `research_ranked_mmr_1v1_20260430.md` | 1v1 랭크 점수 / MMR 시스템 — ELO·Glicko-2·트루스킬 비교, K-factor 동적화, 매칭 풀 확장, 어뷰즈 방지, 잼 후 확장 가이드 | Phase 11/16 ELO K=32 결정 근거 + 잼 후 확장 시 참조 |
 
 ## 보고서를 어떻게 다룰까
 

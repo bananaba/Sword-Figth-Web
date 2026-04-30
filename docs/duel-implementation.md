@@ -1,6 +1,6 @@
 # Chambara Duel — Implementation Reference
 
-> 마지막 업데이트: 2026-04-29 (Phase 13 — 무료 라이브 배포: Cloudflare Workers `chambara-ranked-worker.200tiger1.workers.dev` + Cloudflare Pages `chambara-duel.pages.dev`. /healthz / /leaderboard / /matchmake queue→match 트랜지션 라이브 검증. 49 worker tests)
+> 마지막 업데이트: 2026-04-30 (Phase 16 — 3 sword presets(BASIC/CHARGE/RAPIER) + character/weapon picker, per-weapon slice/thrust impact·cooldown 분리, 솔로 봇 매치 룰을 권위 서버와 동일 수치(`ARENA_RADIUS=4.0`, INITIAL_*POS=±1.0)로 정렬, 옵저버용 `blade-tip-predictor`(서버 30Hz 스냅샷 사이 보간/예측), 랭크 상대 abandonment 감지 → 자동 matchOver, 가드 lean 가변 disc, 스턴 별 head bone tracking, 사전-KO 슬로모 인프라(현재 비활성). Phase 13 라이브 배포는 그대로 유효: Cloudflare Workers `chambara-ranked-worker.200tiger1.workers.dev` + Pages `chambara-duel.pages.dev`)
 >
 > `docs/game-design.md`가 *컨셉/요구사항* 문서라면 본 문서는 *현재 빌드된 시스템*의 레퍼런스.
 > 파일 경로, 책임 분리, 룰 → 코드 매핑, 튜닝 노브, 미해결 항목 정리.
@@ -13,9 +13,11 @@
 
 ```
 shared/src/combat/      # 클라/서버 공유 — 결정론적 순수 로직 (랭크 게임 대비)
-  types.ts              # Vec2, FighterState, GuardSnapshot, AttackEvent, Outcome, WeaponStats
+  types.ts              # Vec2, FighterState, GuardSnapshot, AttackEvent, Outcome, WeaponStats, WeaponId
   geometry.ts           # 선분/박스 교차, 두 선의 예각
-  weapons.ts            # PLASMA_BLADE 디폴트 + 확장 포인트 (IP-안전 네이밍, Phase 9.5)
+  weapons.ts            # 3 프리셋 (BASIC_SWORD / CHARGE_SWORD / RAPIER) + WEAPON_PRESETS + getWeaponPreset(id) (Phase 16, IP-안전 네이밍은 Phase 9.5에서 도입). PLASMA_BLADE는 BASIC_SWORD 별칭 (worker 후방 호환)
+  arena.ts              # ARENA_RADIUS=4.0, INITIAL_PLAYER_POS=-1.0, INITIAL_OPPONENT_POS=1.0 — 클라 렌더/솔로 ringout/서버 ringout이 동일 값 공유 (Phase 16, ca027c8 — 시각 림과 서버 ringout 불일치 방지)
+  blade-tip-predictor.ts# 서버 30Hz 스냅샷 사이 옵저버 측 blade tip 보간/짧은 lead 예측. snapshot/frame 입력 모드, maxLead 0.08s/0.42 unit 클램프 (Phase 16, 9701b44)
   resolver.ts           # resolveAttack / applyOutcome / tickFighter
   index.ts              # 배럴 익스포트 (`@vibejam/shared`로 노출)
 
@@ -34,12 +36,13 @@ worker/src/            # Cloudflare Worker + Durable Objects 권위 랭크 서�
   duel-room.ts          # DuelRoom DO — WS upgrade + alarm 기반 30Hz tick 스케줄
   duel-session.ts       # DuelRoomSession — hello/ready/guard/attack 핸들링 + 매치 상태머신 + state broadcast
   leaderboard.ts        # Leaderboard DO — rating/W-L-D persistence + Top 20
-  test/*.test.js        # node:test 46/46 (rating · queue · room · http · leaderboard)
-  Fighter.tsx           # 캐릭터 + 검 (phase-based 포즈) + drei `<Trail>` + 스턴 별
+  test/*.test.js        # node:test (rating · queue · room · http · leaderboard · session abandonment) — `shared/test/blade-tip-predictor.test.js`까지 합쳐 회귀 가드 50+개
+  Fighter.tsx           # xbot/ybot FBX + Mixamo 애니 + 검(grip/tip pose) + drei `<Trail>` + 스턴 별(head bone tracking) + 가드 lean(disc 가변) + 클립 timeScale 압축
   ImpactRings.tsx       # outcome 발화 시 확장 링 풀 (Phase 8) — useImpacts 스토어 구독
-  TitleScreen.tsx       # 이름 + 5 세이버 색 프리셋 + Solo/Ranked 모드 토글 (Phase 9.5/11b)
-  useDuelLoop.ts        # 솔로 모드 매치 상태머신, pendingAttack, 가드, 물리 tick — outcome 시 dispatchImpactFx 호출
-  useRankedMatch.ts     # 온라인 듀얼 어댑터 (Ranked/Private) — server state interpolation, impact → dispatchImpactFx
+  TitleScreen.tsx       # 이름 + **캐릭터 픽커(Alpha/Beta — 모델 + 사이드 saberColor 번들)** + **무기 픽커(BASIC/CHARGE/RAPIER + blurb)** + Solo/Ranked 모드 토글. localStorage `chambara.character` / `chambara.weapon` 영속화 (Phase 16, 55b2613). 5 세이버 색 픽커는 폐기 — saberColor가 character preset에 묶임.
+  useDuelLoop.ts        # 솔로 모드 매치 상태머신, pendingAttack, 가드, 물리 tick — outcome 시 dispatchImpactFx 호출. **권위 서버와 동일 룰 (`ARENA_RADIUS`/INITIAL_*POS) 사용** + 사전-KO 슬로모 hook(`predictKoPotential`, 현재 무효화 — Phase 16)
+  useRankedMatch.ts     # 온라인 듀얼 어댑터 (Ranked/Private) — server state interpolation, **`createBladeTipPredictor`로 상대 검 끝 보간/예측**, impact → dispatchImpactFx, **상대 abandonment 감지 → 자동 matchOver**, 사전-KO 슬로모 hook(현재 무효화)
+  predictKoPotential.ts # "이 일격이 링아웃 가능한가" 휴리스틱 — 근접 엣지(margin 1.0) OR worst-case knockback projection. 시각 슬로모용 prediction 전용 — resolver/서버 outcome에 영향 0 (Phase 16, 30a369b)
   useMouseInput.ts      # drag-release 슬라이스 / dbl·middle 찌르기 / R-hold 가드
   ai.ts                 # 봇 의사결정 (가드 각도, 슬라이스/찌르기, smart-slice)
   dispatchImpactFx.ts   # 5축 FX 단일 진입점 (Phase 10a) — ring·shake·time·flash·vibrate ±1 프레임 동시 발화
@@ -132,6 +135,21 @@ worker/src/            # Cloudflare Worker + Durable Objects 권위 랭크 서�
 | 8 | 스턴 시간 길게 + 피격 시 즉시 해제 | `stunMs` 800 → 1500. `applyOutcome`의 hit/pierce 분기에 `defender.stunUntil = 0` 추가. |
 | 9 | 스턴 / 카운터 윈도우 / thrust block stun 변수 통합 | `WeaponStats`에서 `counterWindowMs` / `thrustBlockStunMs` 제거, `stunMs` 하나로 통합 (DRY + 안전). |
 
+### 3.5 Phase 16 피드백 (per-weapon timing / 3 sword presets / 솔로 봇=서버 룰 정렬 / abandonment / blade tip prediction / pre-KO 슬로모)
+
+| # | 피드백 | 수정 |
+|---|---|---|
+| 1 | 무기마다 다른 타이밍 (밸런스 다양성) | `WeaponStats`의 `windUpMs`/`thrustChargeMs`/`attackCooldownMs` 단일 값을 **`sliceImpactMs`/`thrustImpactMs`/`sliceCooldownMs`/`thrustCooldownMs` 4개로 분리** — 모든 프리셋이 4개 모두 명시. resolver/duel-loop은 attack kind에 따라 분기 (`commitPending`이 sliceImpactMs vs thrustImpactMs로 schedule, `applyOutcome`이 attackKind별 cooldown 적용). (d70f0a9, 707a96c) |
+| 2 | 3개 무기 (Switch Sports처럼 캐릭터마다 다른 검) | `BASIC_SWORD` (균형) / `CHARGE_SWORD` (sliceK ↓3.0, counterK ↑7.5 — counter specialist) / `RAPIER` (sliceK ↓3.0, thrustK ↑9.0, thrustReach ↑1.7, thrustImpactMs ↓120, bladeLength ↑1.4 — thrust specialist). `WEAPON_PRESETS: Record<WeaponId, WeaponStats>` + `getWeaponPreset(id)` (BASIC fallback). (55b2613) |
+| 3 | 캐릭터 + 무기 픽커 UI | TitleScreen에 `CharacterId = "alpha" \| "beta"` (Alpha=Y bot 시안, Beta=X bot 마젠타 — saberColor가 character에 묶임), `WeaponId` 픽커 카드 (label + blurb). 5 세이버 색 픽커는 폐기. localStorage `chambara.character` / `chambara.weapon` 영속화. (55b2613) |
+| 4 | 솔로 봇 매치 룰을 권위 서버와 정렬 | `shared/src/combat/arena.ts` 신설 — `ARENA_RADIUS=4.0`, `INITIAL_PLAYER_POS=-1.0`, `INITIAL_OPPONENT_POS=1.0`. 클라 `Arena3D` 시각 림 / 솔로 `useDuelLoop` ringout / 서버 `duel-session` ringout 모두 같은 상수 import. 이전엔 시각 4.0 / 서버 4.2 차이로 fighters가 시각 림 밖에서 살아있는 케이스 발생. (ca027c8) |
+| 5 | 찌르기 윈도우 단축 (Switch Sports 페이스) | `BASIC_SWORD.thrustImpactMs` 280 → 180, `thrustCooldownMs` 600 → 400. RAPIER는 더 짧음 (impact 120 / cooldown 400). (707a96c) |
+| 6 | 옵저버 측 검 끝이 30Hz 스냅샷 사이 끊겨 보임 | `shared/src/combat/blade-tip-predictor.ts` 신설 — snapshot/frame 두 모드. snapshot 도착 시 `snapshotCorrection 0.85`로 rendered를 server tip 쪽으로 lerp + 두 스냅샷 사이 velocity 측정 (`maxSpeed 24` 클램프). frame tick에서 latest snapshot에 `min(age, maxLeadSeconds=0.08)`만큼 lead, `maxLeadDistance 0.42`로 클램프, exponential catch-up `rate=26`. `useRankedMatch`가 opponent blade tip wire에 적용. (9701b44) |
+| 7 | 상대가 매치 중 disconnect → 화면 멈춤 | 서버 `duel-session.ts`에 forfeit-by-abandonment — `hello` 완료한 사이드의 WS가 매치 중 detach되면 남은 쪽이 "win"으로 즉시 matchOver broadcast + leaderboard 반영. 클라 `useRankedMatch`도 abandonment 메시지 핸들. (330a760, worker test 추가) |
+| 8 | 스턴 별이 캐릭터 머리에서 분리되어 보임 | Phase 12까지는 `stunGroupRef.position.y = 1.85` 고정이었는데 Mixamo idle 클립이 머리를 약간 끄덕여서 별이 떠 있는 듯한 갭 발생. `Fighter.tsx`가 `mixamorigHead` bone을 찾아 매 프레임 `head.getWorldPosition` → group local로 변환해서 별 위치를 head bone에 부착. (360ad3f) |
+| 9 | 가드가 chest 정중앙 회전이라 부자연스러움 | (Phase 15에서 시작) `leanedGuardSegment(guard, pointer)`가 segment center를 chest에서 pointer 방향으로 `min(\|pointer-chest\|, GUARD_LEAN_MAX_RADIUS=0.5)`만큼 이동. 마우스 거리에 따라 0~MAX **disc 안에서 자유 이동** (원 위가 아님). 78c34a3는 이걸 더 다듬음 — guard pose visual + 방향 인디케이터 개선. resolver는 segment 방향만 보므로 시각 lean이 perpendicularity 판정에 영향 0. |
+| 10 | KO 직전 슬로모 hook 인프라 (현재 비활성) | `client/src/duel/predictKoPotential.ts` 신설 — `(attackerPosX, defenderPosX, weapon, arenaRadius)`로 "이 일격이 링아웃 가능한가" 휴리스틱. 두 predicate OR: (a) 디펜더가 `radius - 1.0` 안 (near edge) (b) max(slice/thrust/counter knockback)/FRICTION 거리만큼 push했을 때 `\|projected\| > radius`. `useTimeScale.koBuildup(ms, now)`이 구현됐고 `useDuelLoop`/`useRankedMatch`가 attack 시점 hook 와이어. **현재 발화 path는 비활성화** — Phase 17+에서 튜닝/활성화. (30a369b) |
+
 ---
 
 ## 4. 전투 모델 디테일
@@ -162,7 +180,7 @@ T=0       T=0..280               T=280                      T=280..400          
 
 방향이 마우스 벡터에 수직 → "마우스가 가리키는 방향에서 들어오는 공격을 막는 자세".
 
-**시각 lean** (Phase 15): resolver는 `tip - grip` 방향만 사용하고 segment의 위치는 검사하지 않는다(angle-only guard model). 이 사실을 이용해 `Fighter.tsx`의 `leanedGuardSegment(guard, pointer)`가 segment center를 chest에서 pointer 방향으로 **가변 거리**만큼 이동시킨다: `lean = min(|pointer - chest|, GUARD_LEAN_MAX_RADIUS = 0.5)`. 마우스가 chest 가까이 있으면 lean이 작아 chest 정중앙 회전에 가깝고, 멀어질수록 그쪽으로 부드럽게 따라가다 max 반경에서 클램프된다 — 즉 segment center가 반경 0~MAX의 **원판(disc) 안에서 자유롭게 이동**(원 *위*가 아니라 원 *안*). pointer는 `s.bladeTipBladePlane`(player=마우스, opponent ranked=server-broadcast blade tip, opponent solo=가드 segment의 tip을 fallback). 시각만 변경되고 perpendicularity 판정은 그대로 유지된다.
+**시각 lean** (Phase 15→16): resolver는 `tip - grip` 방향만 사용하고 segment의 위치는 검사하지 않는다(angle-only guard model). Phase 15에서는 segment center를 chest→pointer 방향으로 disc 안에서 가변 이동시키는 `leanedGuardSegment` 패턴을 썼고, **Phase 16(78c34a3)에서는 hand-position 기반으로 재구현** — `Fighter.tsx`의 `guardRightHandLocal(s, facing)`이 `s.bladeTipBladePlane - GRIP_2D` 단위 벡터로부터 right hand의 X(`±GUARD_HAND_SIDE_REACH = BODY_HALF_WIDTH * 0.5`)·Y(`[SHOULDER_Y - 0.26, SHOULDER_Y - 0.03]`)를 클램프해서 잡는다. left hand도 유사하게 chest 양쪽에 클램프되고 검은 두 손 사이 grip + Z `= GUARD_FORWARD_OFFSET = 0.51`로 chest 앞에 자리잡는다 → 마우스 방향으로 가드 자세가 자연스럽게 lean. pointer는 `s.bladeTipBladePlane` (player=마우스, opponent ranked=server-broadcast blade tip + `blade-tip-predictor` 보간, opponent solo=가드 segment tip fallback). 시각만 변경되고 perpendicularity 판정은 그대로 유지된다.
 
 ### 4.3 캐릭터 애니메이션 / 검 소유권
 
@@ -249,33 +267,50 @@ phase ∈ {countdown, fighting, roundOver, matchOver}
 
 ## 7. WeaponStats 튜닝 노브
 
-D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
+D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능. Phase 16에서 timing이 attack kind별로 분리되었고, weapon은 3 프리셋 — 아래 수치는 `BASIC_SWORD`(균형) 기준이고 CHARGE/RAPIER는 한 축씩 트레이드오프.
 
-### 넉백 — slice < counter < thrust 위계 (Phase 9.5 후 -25% 튠)
-- `sliceKnockback` (6.0) — per-hit 변위 = 6.0/FRICTION = **1.2 unit** (Phase 9.5 후 8.0→6.0)
-- `counterKnockback` (7.5) — 가드 후 윈도우 안 공격 시 보너스. 슬라이스보다 살짝 위 (변위 1.5). 가드 측의 보상. (Phase 9.5 후 10.0→7.5)
-- `thrustKnockback` (10.5) — 가장 어려움 (어떤 가드든 막힘) → 가장 높은 보상. 변위 2.1 → 시작 ±1.6에서 1히트 KO 불가, 2-3히트 페이스. (Phase 9.5 후 14.0→10.5, 사용자 피드백 "넉백이 너무 큼")
-- `attackerFollowFraction` (1.0) — push-along 비율. **1.0 = 풀 추격**으로 거리 보존 (Phase 7 변경: 0.5 → 1.0).
+### 넉백 — slice < counter < thrust 위계 (Phase 16 재튠)
 
-### 타이밍 — 단일 stunMs로 통합
-- `attackCooldownMs` (600) — input → 다음 input 가능까지
-- `windUpMs` (280) — slice 텔레그래프
-- `thrustChargeMs` (280) — thrust 텔레그래프
-- `swingDurationMs` (120) — swing 시각 시간
-- `stunMs` (1500) — **블록 후 한 페이즈의 길이**. (a) 공격자 stun 락아웃, (b) 디펜더 카운터 윈도우, (c) thrust block stun 모두 같은 클럭. 피격 시 즉시 해제. (Phase 7 통합: 이전엔 `stunMs` / `counterWindowMs` / `thrustBlockStunMs` 3개 → 1개)
+| 노브 | BASIC | CHARGE (counter specialist) | RAPIER (thrust specialist) | 변위 (n/FRICTION 5.0) |
+|---|---|---|---|---|
+| `sliceKnockback` | 4.0 | 3.0 ↓ | 3.0 ↓ | BASIC 0.8 unit |
+| `counterKnockback` | 5.0 | **7.5 ↑↑** (한 방으로 mid-arena → ringout 위협) | 4.0 ↓ | BASIC 1.0 |
+| `thrustKnockback` | 6.0 | 5.0 ↓ | **9.0 ↑↑** (slice arc 밖에서 찌르기) | BASIC 1.2 |
+
+- `attackerFollowFraction` (1.0, 모든 프리셋 공통) — push-along 비율. 1.0 = 풀 추격으로 거리 보존 (Phase 7).
+
+> Phase 9.5에서 단일 PLASMA_BLADE의 6.0/7.5/10.5에서 -25% 튠했었는데, Phase 16 다중 프리셋 전환 시 BASIC은 더 약하게(4/5/6) 잡고 특화 프리셋의 한 축을 부각시키는 방식으로 재배분. ARENA_RADIUS 4.0이라 1히트 KO는 RAPIER thrust가 mid-arena에서, CHARGE counter가 마찬가지로 중간거리에서 가능.
+
+### 타이밍 — kind별 분리 (Phase 16, d70f0a9)
+
+이전 단일 `windUpMs`/`thrustChargeMs`/`attackCooldownMs`는 폐기되고 4개 필드로 분리. 모든 프리셋은 4개 필드를 명시적으로 declare(부분 상속 위험 회피).
+
+| 노브 | BASIC | CHARGE | RAPIER | 의미 |
+|---|---|---|---|---|
+| `sliceImpactMs` | 280 | 320 ↑ (heavier swing) | 300 | input → resolver 발동까지 (텔레그래프) |
+| `thrustImpactMs` | 180 ↓ | 240 | **120** ↓↓ (rapier 시그니처) | 동일, thrust 전용 |
+| `sliceCooldownMs` | 600 | 600 | 600 | input → 다음 input 락아웃 |
+| `thrustCooldownMs` | 400 ↓ | 400 | 400 | 동일, thrust 전용. 707a96c에서 600→400 |
+
+- `swingDurationMs` (120, 모든 프리셋 공통) — impact 후 swing → recovery 시각 시간
+- `stunMs` (1500, 모든 프리셋 공통) — **블록 후 한 페이즈의 길이**. (a) 공격자 stun 락아웃, (b) 디펜더 카운터 윈도우, (c) thrust block stun 모두 같은 클럭. 피격 시 즉시 해제. (Phase 7 통합)
 
 ### 판정
-- `guardAngleTolerance` (30°) — perpendicular 허용폭
-- `motionImmunityVelocityThreshold` (1.0) — 이상 속도면 양쪽 공격 무효 + `commitPending` 입력 거부 (Phase 7 추가)
+- `guardAngleTolerance` (45°, 모든 프리셋) — perpendicular 허용폭. Phase 16에서 30°→45°로 완화 (사용자가 가드 성공률 향상 요청)
+- `motionImmunityVelocityThreshold` (1.0) — 이상 속도면 양쪽 공격 무효 + `commitPending` 입력 거부 (Phase 7)
 
 ### 형상
-- `bladeLength` (1.2) — 검 segment 길이 = 가드 segment 길이
-- `thrustReach` (1.4) — 찌르기 추가 reach
-- `minSliceReach` (0.35) — 슬라이스 최소 드래그 거리 (탭 무시)
+- `bladeLength` — BASIC/CHARGE 1.2, **RAPIER 1.4** (가드 segment 함께 길어져 수비 보너스)
+- `thrustReach` — BASIC/CHARGE 1.4, **RAPIER 1.7** (slice arc 밖 찌르기 가능)
+- `minSliceReach` (0.35, 모든 프리셋) — 슬라이스 최소 드래그 거리 (탭 무시)
 
 ### 비-WeaponStats 상수
 - `FRICTION = 5.0` (`useDuelLoop.ts`) — Phase 7: 2.5 → 5.0. exp 감속 계수, 반감기 138ms.
+- `ARENA_RADIUS = 4.0` (`shared/src/combat/arena.ts`) — Phase 16. 클라 시각/솔로/서버 ringout이 동일 상수 공유.
+- `INITIAL_PLAYER_POS = -1.0`, `INITIAL_OPPONENT_POS = +1.0` — 동일 파일.
 - `SWORD_FORWARD_OFFSET = 0.35` (`Fighter.tsx`) — xbot/ybot hand bone 기준 blade plane 거리. idle은 IK grip, non-idle은 right-hand bone grip 우선.
+- `GUARD_FORWARD_OFFSET = 0.51` (`Fighter.tsx`, Phase 16) — 가드 시 검·손이 chest 앞 이 거리에 자리잡음 (idle Z=0.35보다 더 앞).
+- `GUARD_HAND_SIDE_REACH = BODY_HALF_WIDTH * 0.5` (`Fighter.tsx`, Phase 16) — 가드 right hand가 마우스 방향에 따라 chest 좌우로 클램프되는 max X 거리.
 
 ---
 
@@ -296,7 +331,8 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 - [ ] **AI 시드 RNG** — `Math.random` 대체. 랭크 리플레이/네트코드 결정론 필수
 - [ ] **4라운드 서든데스** — 좁은 발판 + 2히트 KO (chambara 원작)
 - [ ] **플레이어 이동** — 현재는 넉백으로만 위치 변화. WASD 이동? 아니면 의도적으로 X
-- [ ] **무기 종류** — 차지 검 / 쌍검 / Timely Block (현재 PLASMA_BLADE 1종)
+- [x] **무기 종류** (Phase 16) — `BASIC_SWORD` / `CHARGE_SWORD` (counter specialist) / `RAPIER` (thrust specialist) 3 프리셋. 잼 후 4번째(쌍검 / Timely Block 등) 후보.
+- [ ] **사전-KO 슬로모 활성화** (Phase 16에서 인프라 구축, 발화 비활성) — `predictKoPotential` 휴리스틱이 false positive를 너무 많이 잡아 모든 swing이 슬로모 → 게임 페이스 깨짐. 더 보수적 predicate(예: 이미 ringout 거리만큼 push 가능 + counter window 활성) 정의 후 활성화.
 
 ### 멀티플레이 / 랭크 (Day 2)
 - [x] **Cloudflare RankedQueue Durable Object** (Phase 11a + **11.6**) — `playerId`/rating/name을 받아 ±200 범위 매칭, 매치 성사 시 `ranked-{a}-{b}-{base36(Date.now())}-{uuid}` roomId 발급. **Phase 11.6**: `state.storage` 영속화 (key `"waiting"`) — DO eviction/Worker 재시작 후에도 큐 보존. 같은 playerId 재폴링 시 기존 위치를 유지한 채 entry 갱신해서 자기 자신 매칭과 queue-order 밀림을 방지. **잔여**: 30s 대기 시 범위 확장 (P2).
@@ -309,6 +345,8 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 - [ ] **`wrangler deploy` + 클라 env 분기** — Worker URL을 클라가 어떻게 받을지 (build-time env vs runtime config).
 - [ ] **인증 / playerId** — 잼 범위에선 `localStorage["chambara.playerId"]` UUID + `["chambara.name"]` 기반. 영속화는 DO SQLite.
 - [ ] **임팩트 시점 동기화** — 현재는 클라가 보낸 attack의 latest guard 판정. 여유 시 최근 200-300ms state history로 rollback 보정.
+- [x] **옵저버 측 검 끝 보간** (Phase 16, 9701b44) — `blade-tip-predictor`가 30Hz 스냅샷 사이 lead/catch-up. snapshotCorrection 0.85, maxLead 0.08s/0.42unit, exponential catch-up rate 26.
+- [x] **상대 abandonment 처리** (Phase 16, 330a760) — 매치 중 상대 WS detach 시 서버가 즉시 forfeit matchOver broadcast + leaderboard 반영. worker test로 회귀 가드.
 - [x] **사설방** — TitleScreen에서 Private Room code를 열면 `/rooms/private-*`에 직접 WS 연결. `record=0`으로 랭크 리더보드/로컬 rating에는 반영하지 않음.
 - [ ] **토너먼트 자동 브래킷** — 현재 UI에서 비활성화. 승자 집계/브래킷 진행 Durable Object까지 구현한 뒤 활성화.
 - [x] **클라 옵티미스틱 desync 보정** (Phase 11.6) — `useRankedMatch.localPlayerAttackConfirmed` ref. 서버는 모든 outcome(rejected/miss 포함)에 대해 `impact` 메시지 broadcast하므로, `attackerSide === ourSide` 인 impact가 `impactAt + 220ms` 안에 도착하지 않으면 server reject로 간주 → visual 조기 클리어.
@@ -365,6 +403,7 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 | **12** | **큐트 procedural 캐릭터** (사용자 피드백 "동글동글 귀여운 레퍼런스 스타일" — Switch Sports Mii. `docs/jam-polish-plan.md` §Phase 12 task 33+34 부분 적용): (a) Quaternius/Mixamo 자산은 **잼 본편 미사용** — 사실적 superhero 톤이 Phase 8 저폴리·neon glow 톤과 충돌, Mixamo retarget 디버깅 리스크 높음. 자산은 `client/public/models/`에 보존 (잼 후 폴리시·`?demo=character` 후보) (b) `Fighter.tsx` 박스+sphere → **Mii 풍 프리미티브 합성**: 큰 머리 sphere(r=0.30, y=1.45) + 납작한 머리카락 tuft + 검은 눈 dot 2개 + egg-shape 셔츠 토르소(scale 0.30/0.35/0.24) + 어깨 bump 2개 + 짧은 다리 cylinder 2개 + 납작한 발 sphere 2개 (c) **양손 grip 모션** — `rightArmRef`/`leftArmRef` Group 2개 + `handsRef` Mesh 1개. 매 프레임 `currentSwordPose`의 `fromBladePlane`(검 grip 위치)을 `bladePlaneToLocal`로 로컬 좌표 변환 → 양 어깨(`±SHOULDER_VIS_X=0.24`, `SHOULDER_VIS_Y=1.10`)에서 그 점까지 sword와 동일한 `orientSegment` 헬퍼로 stretch+rotate. 검·가드·어택·옵팩 페이드·스턴별 모두 자동으로 따라옴 (d) **가드 텔(guard tell) — Fresnel rim 폐기 + 전체-블레이드 emissive flash로 전환**. 사용자 피드백 진행: ("외곽선이 가드 시에만 추가됐던 거야") → 5개 body 머티리얼 rim 적용 → ("검이 항상 같은 색이라 rim 차이 없음") → 흰 rim으로 시도 → ("검 색 검정, rim은 accent") → 검정 body + accent rim → ("rim이 특정 각도에서만 보임 — 모든 방향에서 색이 보여야 함"): Fresnel은 view-dependent라 broad-face가 카메라 향할 때 dot≈1 → rim≈0 → 검 body 그대로 검정으로 보임. **`applyFresnelRim` 헬퍼 통째 제거** + `swordRimUniform`/`guardRimColor`/`offRimColor` 제거. 대신 `swordMaterial`을 init 시 `emissive=accentColor`, `emissiveIntensity=0`으로 두고 useFrame에서 `s.guard.active ? 3.0 : 0`로 0.22 lerp = 가드 활성 시 검 표면 전체가 accent로 빛남(view-independent). Bloom 0.85 임계 위로 안정적으로 들어가 모든 각도에서 글로우. body는 `color="#9ca3af"` 중간 회색 (검정이면 어두운 영역에서 잘 안 보이고 흰색이면 밝은 물 반사와 겹침 — 사용자 피드백; 잼 후 sword 재디자인 placeholder), drei `<Trail>` color는 `palette.bright`(accent) 유지 — swing 모션 가독성. **부수 정리**: 셰이더 chunk 리네임 버그(Phase 9.5(c) `output_fragment` → r170 `opaque_fragment`)는 rim 폐기로 해결됨; 5개 body 머티리얼은 처음부터 중립(rim 호출 X), 검은 emissive 기반. 검은 눈은 `MeshBasicMaterial`이라 rim 무관, opacity는 `allBodyMats` 배열에 포함되어 `transparentWhenIdle` 32% 페이드 일관성 유지 (e) **state 색 tint는 셔츠에만** — `s.stunned` → `#facc15` lerp 0.55, `s.cooldown` → `#475569` lerp 0.35. skin/hair/pants/shoe는 중립 유지(피부가 노래지면 어색) (f) **resolver 상수 불변** — `SHOULDER_Y=1.15`, `BODY_HEIGHT=1.7`, `BODY_HALF_WIDTH=0.32`, `BODY_DEPTH=0.42` 그대로 export 유지(Mii 실루엣이 1.7 hitbox 안에 들어감). hitbox AABB·attack origin·sword pivot 모두 그대로라 게임 로직·AI·`shared/combat/` 영향 0 (g) **ringout 낙하 모션 추가** (사용자 피드백 "KO ringout 안 떨어짐, 원래부터 그랬음"): 검출 로직(`useDuelLoop` `Math.abs(posX) > arenaRadius` → phase=roundOver 2200ms)은 정상 작동했으나 시각적 낙하가 부재 — `Fighter.tsx`의 useFrame이 `groupRef.current.position.z`만 갱신하고 y는 0 고정이라 페데스탈 옆 같은 높이에 떠 있었음. `roundOver`에서 velX가 zero로 리셋되므로 Y 낙하를 Fighter.tsx 자체에서 quadratic gravity로 처리(`fallStartRef`로 edge 통과 시점 기록 → `y(t) = -0.5 * 6.0 * t²`, 클램프 -5.0). 1초 안에 물 아래로 잠김. 라운드 리셋 시 `isOutside` false → fallStartRef null → y=0 복귀. (h) **미적용 (Phase 12.x 폴리시)** — task 31(gltf-transform 압축, 자산 안 쓰니 무관), task 32(Blender 멀티 클립 GLB), task 35(Trail을 `mixamorig:RightHand` 부착, 현재 검 끝에 그대로). |
 | **14** | **xbot/ybot 임시 캐릭터 + 손-검 소유권 재정의** (사용자 설계 반영): (a) `client/public/models/X Bot.fbx`, `Y Bot.fbx`를 `Fighter`의 모델 prop으로 사용. 모델은 `BODY_HEIGHT`에 맞춰 normalize하고 material clone으로 opacity/tint를 독립 적용. (b) `raw/anim_idle|slash|thrust|block|hit|death.fbx`를 `AnimationMixer`에 연결. 현재는 `slice`/`thrust` 단일 클립이지만 이후 여러 공격 클립이 들어오면 대표 방향 벡터와 입력 방향의 dot product로 가장 가까운 클립을 고른다. (c) idle은 팔 reach와 검 길이의 reach annulus로 grip/tip을 푼다. 검 길이 `1.2`, arm reach `0.46` 기준으로 마우스 거리가 `0.74..1.66`이면 검 끝이 마우스에 정확히 놓이고, 그 밖이면 같은 body→mouse ray 위 가까운 가능한 tip으로 clamp한다. 양손은 같은 점이 아니라 손잡이 위 `0.16` 간격의 두 지점을 잡는다. (d) idle 외 authored animation 중에는 right-hand bone 위치를 sword grip으로 사용한다. 공격/피격/패배 동작에서 검은 손에 들린 상태가 우선이며, 입력 방향은 검 방향/트레일 선택에만 관여한다. (e) 피격과 스턴은 분리 예정: 새 피격 클립이 들어오면 impact reaction과 stun loop/pose를 별도 visual state로 나눈다. (f) post-hit `tradeImmune` 제거 — 연속 공격 방지는 `attackCooldownMs`, pending attack gate, motion gate가 담당한다. |
 | **15** | **애니메이션 시스템 확장 — clip timeScale + hit 분리 + 가드 lean** (사용자 피드백 진행: "FBX 클립이 쿨다운보다 김 → 배속 가능?", "hit는 가드 스턴/피격 2개로 분리할 거야", "가드는 별도 클립 없이 idle 변형", "가드가 chest 정중앙 회전이라 부자연스러움 → 방향에 따라 lean"): (a) **timeScale 인프라** — `Fighter.tsx`에 `fitClipToWindow(action, windowMs)` 헬퍼 추가. `action.timeScale = clamp(clipMs / windowMs, 0.25, 4.0)`로 attack 클립을 gameplay 윈도우(`s.attack.cooldownEndAt - inputAt`) 안에 압축. `playFighterAnimation`이 `windowMs` 인자를 받아 액션 시작 시 적용. `animationWindowMs(s, desired)`가 slash/thrust일 때만 윈도우 반환, 그 외엔 native 속도. (b) `completeAttackAnimation`의 hold `until`을 `s.attack.cooldownEndAt`로 변경 — timeScale로 압축된 클립 종료 시점이 attack 라이프사이클 종료와 정확히 일치. (c) **hit 분리** — `FighterAnimationName`에서 `hit` → `hit_guard | hit_taken`. URL은 `HIT_GUARD_ANIM_URL` / `HIT_TAKEN_ANIM_URL` 두 슬롯으로 나뉘었으나 새 클립 도착 전까지 둘 다 `anim_hit.fbx`. `FighterVisualState`에 `stunSource: "guard" | "hit" | null` 추가. resolver는 `attackerStun`만 세팅하고 hit/pierce는 `stunUntil = 0`이라 현재 `stunned == true` ⇒ 무조건 `"guard"` (피격 reaction은 visual-only 윈도우 ref로 추후 추가 예정 — 슬롯과 라우팅은 이미 준비). `useDuelLoop` / `useRankedMatch` 매 tick에 stunSource 갱신. `desiredFighterAnimation`이 `s.stunSource`로 분기. (d) **block 클립 폐기** — `BLOCK_ANIM_URL` / `blockFbx` / `FighterAnimationName.block` / preload 모두 제거. `desiredFighterAnimation`의 guard 분기 삭제 → idle로 폴백. idle 클립이 계속 루프되는 위에 `currentSwordPose`가 가드 perpendicular segment를 반환하고 useFrame의 idle IK가 grip을 따라가서 손이 자동 이동. (e) **가드 segment lean (가변)** — `Fighter.tsx`의 `leanedGuardSegment(guard, pointer)`가 segment 방향(grip→tip)은 보존하고 중심을 chest에서 pointer 방향으로 `min(mouseDist, GUARD_LEAN_MAX_RADIUS=0.5)` 거리만큼 이동. 1차안은 fixed 0.32였는데 사용자 피드백("원 위만 도는 거잖아 — 원 안에서 자유롭게")으로 가변 거리로 전환. pointer = `s.bladeTipBladePlane` (player=mouse, opponent ranked=server-broadcast blade tip, opponent solo=guard.tip fallback → max lean에서 클램프). 마우스가 chest 가까울수록 lean=0(chest 회전), 멀어질수록 max에서 클램프 → segment center가 반경 0~MAX disc 안에서 자유 이동. resolver의 angle-only guard model 덕분에 시각 lean이 perpendicularity 판정에 영향 0%. |
+| **16** | **다중 무기·캐릭터 + 룰 정렬 + 옵저버 보간 + abandonment + KO 슬로모 인프라** (2026-04-30, 14 commits): (a) **per-weapon timing 분리** (d70f0a9) — `WeaponStats`에서 `windUpMs`/`thrustChargeMs`/`attackCooldownMs` 단일 값을 `sliceImpactMs`/`thrustImpactMs`/`sliceCooldownMs`/`thrustCooldownMs` 4개로 분리. 모든 프리셋 명시 declare. `commitPending`은 attack kind에 따라 schedule, `applyOutcome`은 attackKind별 cooldown 적용. (b) **3 sword presets** (55b2613) — `BASIC_SWORD` (균형, 4/5/6 knockback), `CHARGE_SWORD` (counter specialist — sliceK 3.0 / counterK 7.5 / 더 무거운 swing 320·240), `RAPIER` (thrust specialist — sliceK 3.0 / thrustK 9.0 / thrustReach 1.7 / thrustImpactMs 120 / bladeLength 1.4). `WEAPON_PRESETS: Record<WeaponId, WeaponStats>` + `getWeaponPreset(id)` (BASIC fallback). PLASMA_BLADE는 BASIC_SWORD 별칭으로 worker 후방 호환 유지. (c) **캐릭터·무기 픽커 UI** (55b2613) — TitleScreen에 `CharacterId = "alpha" \| "beta"` (Alpha=Y bot 시안, Beta=X bot 마젠타 — saberColor가 character preset에 묶임), `WEAPON_PICKER_OPTIONS` 카드. 5 세이버 색 픽커 폐기. localStorage `chambara.character` / `chambara.weapon` 영속화. `joinOptions: { name, saberColor, weaponId }`로 worker hello에 송신. (d) **arena.ts 신설** (ca027c8) — `ARENA_RADIUS=4.0`, `INITIAL_PLAYER_POS=-1.0`, `INITIAL_OPPONENT_POS=1.0` 단일 진실 소스. 클라 `Arena3D` 시각 림 / 솔로 `useDuelLoop` ringout / 서버 `duel-session` ringout 모두 import. 이전 시각/서버 4.0/4.2 차이 해결. (e) **thrust 윈도우 단축** (707a96c) — BASIC `thrustImpactMs` 280→180, `thrustCooldownMs` 600→400 (Switch Sports 페이스). RAPIER 더 짧게 (120/400). (f) **blade-tip-predictor** (9701b44) — `shared/src/combat/blade-tip-predictor.ts` 신설. snapshot/frame 두 모드. snapshot 도착 시 `snapshotCorrection 0.85`로 lerp + 두 스냅샷 사이 velocity 측정 (`maxSpeed 24` 클램프). frame tick에서 `min(age, maxLeadSeconds=0.08)`만큼 lead, `maxLeadDistance 0.42` 클램프, exponential catch-up rate 26. `useRankedMatch`가 opponent blade tip wire에 적용. shared/test에 51-line 회귀 테스트. (g) **abandonment forfeit** (330a760) — 서버 `duel-session.ts`의 `detach()`가 매치 중일 때 남은 hello'd 사이드를 winner로 즉시 matchOver broadcast + leaderboard 반영. 클라 `useRankedMatch`도 abandonment 메시지 핸들. worker/test/duel-session.test.js +89 lines 회귀 가드. (h) **stun star head bone tracking** (360ad3f) — `Fighter.tsx`가 `mixamorigHead` bone을 매 프레임 추적해 stunGroup 위치를 head bone에 부착 (이전 고정 y=1.85에서 idle nod로 갭 발생). (i) **사전-KO 슬로모 인프라(비활성)** (30a369b) — `predictKoPotential.ts` 신설 (near-edge OR worst-case projection 휴리스틱). `useTimeScale.koBuildup(ms, now)` envelope 구현 (350ms freeze → 650ms hold @ 0.25× → 200ms ease-out). `useDuelLoop`/`useRankedMatch` attack 시점 hook 와이어. **현재 발화는 비활성화** — false positive 너무 많아 페이스 깨짐, 더 보수적 predicate 필요. ranked KO dispatch fix는 별개로 적용 (랭크에서 ringout 시 dispatchImpactFx("ko") 누락 회복). (j) **guard pose visual + direction indicator 개선** (78c34a3) — Phase 15 lean의 시각 마무리 + 가드 방향 인디케이터 추가 (마우스 방향이 어느 각도를 막는지 명시). (k) **CI fix** (64c80af) — Pages deploy에 sanitized commit subject 전달 (특수문자로 wrangler 깨짐 회피). |
 
 각 phase는 typecheck + build 통과 후 다음으로 진행. 브라우저 시각 검증은 `yarn dev:client` 후 직접 수행 필요.
 
@@ -379,6 +418,7 @@ D키로 디버그 패널 열어서 실시간 슬라이더 조정 가능.
 - [`claudedocs/research_chambara_20260428.md`](../claudedocs/research_chambara_20260428.md) — Switch Sports Chambara 메카닉 리서치 보고서
 - [`claudedocs/research_chambara_visuals_20260429.md`](../claudedocs/research_chambara_visuals_20260429.md) — 시각 처리 리서치 (R3F + Bloom + 라이트세이버 톤)
 - [`claudedocs/research_impact_feedback_20260429.md`](../claudedocs/research_impact_feedback_20260429.md) — 타격감 5축 리서치 (시각·청각·햅틱·시간·공간) — Phase 9/10 폴리시 근거
-- [`claudedocs/research_character_weapon_customization_20260429.md`](../claudedocs/research_character_weapon_customization_20260429.md) — 캐릭터·무기·커스터마이징 + IP-안전 네이밍 — Phase 9.5/12 근거
+- [`claudedocs/research_character_weapon_customization_20260429.md`](../claudedocs/research_character_weapon_customization_20260429.md) — 캐릭터·무기·커스터마이징 + IP-안전 네이밍 — Phase 9.5/12/16 근거
+- [`claudedocs/research_ranked_mmr_1v1_20260430.md`](../claudedocs/research_ranked_mmr_1v1_20260430.md) — 1v1 랭크 점수 / MMR 시스템 (ELO·Glicko-2·트루스킬 비교) — 잼 후 K-factor 동적화 / 매칭 풀 확장 시 참고
 - [`docs/jam-polish-plan.md`](./jam-polish-plan.md) — Phase 8 이후 폴리시 작업 큐 + 사용자 에셋 수집 가이드
 - `docs/references/chambara-ref-{1,2,3}.{webp,jpg}` — Switch Sports 챔버라 스크린샷 (카메라 앵글, 검 글로우, 스턴 별 인디케이터 레퍼런스)
