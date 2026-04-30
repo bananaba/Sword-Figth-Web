@@ -51,8 +51,8 @@ test("DuelRoomSession assigns the first two hello messages to player and opponen
     roomId: "ranked-p1-p2",
     phase: "waiting",
     players: [
-      { side: "player", playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8" },
-      { side: "opponent", playerId: "p2", name: "Ben", rating: 1120, saberColor: "#e879f9" },
+      { side: "player", playerId: "p1", name: "Ada", rating: 1000, saberColor: "#38bdf8", weaponId: "basic" },
+      { side: "opponent", playerId: "p2", name: "Ben", rating: 1120, saberColor: "#e879f9", weaponId: "basic" },
     ],
   });
 });
@@ -262,7 +262,10 @@ test("DuelRoomSession ends the round when knockback pushes a fighter out", () =>
       now: 8100,
     }),
   );
-  session.tick(8300, 0.5);
+  // dt = 0.6 so BASIC thrust knockback (6.0) pushes the defender past
+  // ARENA_RADIUS (4.0) from start posX 1.0:
+  //   posX = 1.0 + 6.0 * 0.6 = 4.6 > 4.0 → ringout.
+  session.tick(8300, 0.6);
 
   assert.deepEqual(attacker.sent.at(-1), {
     t: "round_over",
@@ -384,8 +387,8 @@ test("DuelRoomSession broadcasts state every fighting tick", () => {
   assert.equal(states.length, before + 1);
   const latest = states.at(-1);
   assert.equal(latest.serverNow, 8500);
-  assert.equal(latest.player.posX, -1.6);
-  assert.equal(latest.opponent.posX, 1.6);
+  assert.equal(latest.player.posX, -1.0);
+  assert.equal(latest.opponent.posX, 1.0);
   assert.equal(latest.player.velX, 0);
   assert.deepEqual(latest.player.guard, {
     active: false,
@@ -542,8 +545,8 @@ function forcePlayerRingoutWin(session, attacker, now = 8100) {
       now,
     }),
   );
-  // dt = 0.5s integration so the new (smaller) thrust knockback (8.0)
-  // still pushes the defender past ARENA_RADIUS (4.2) from start posX 1.6:
-  //   posX = 1.6 + 8.0 * 0.5 = 5.6 ≥ 4.2 → ringout.
-  session.tick(now + 200, 0.5);
+  // dt = 0.6s integration so BASIC thrust knockback (6.0) pushes the
+  // defender past ARENA_RADIUS (4.0) from start posX 1.0:
+  //   posX = 1.0 + 6.0 * 0.6 = 4.6 > 4.0 → ringout.
+  session.tick(now + 200, 0.6);
 }

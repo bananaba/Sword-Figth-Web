@@ -86,25 +86,25 @@ export function Spikes({
 
   return (
     <group>
-      {/* Pit floor — dark stone, replaces the water surface visually. */}
+      {/* Pit floor — dark gunmetal slab, reads as the bottom of the chamber. */}
       <mesh
         position={[0, floorY - 0.005, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
       >
         <ringGeometry args={[pitInnerR, pitOuterR, 96]} />
-        <meshStandardMaterial color="#181210" roughness={0.96} />
+        <meshStandardMaterial color="#0d1118" roughness={0.85} metalness={0.4} />
       </mesh>
 
-      {/* Spike bodies — rusty iron, instanced for cheap rendering. */}
+      {/* Spike bodies — gunmetal industrial pikes, instanced for cheap rendering. */}
       <Instances limit={count} range={count} castShadow receiveShadow>
         <cylinderGeometry
           args={[BODY_TOP_R, BODY_BASE_R, BODY_HEIGHT, 6]}
         />
         <meshStandardMaterial
-          color="#332a23"
-          roughness={0.55}
-          metalness={0.55}
+          color="#2a3038"
+          roughness={0.45}
+          metalness={0.7}
         />
         {items.map((s, i) => (
           <Instance
