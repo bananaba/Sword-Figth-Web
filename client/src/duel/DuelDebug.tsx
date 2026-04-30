@@ -63,7 +63,8 @@ export function DuelDebugScene({ player, opponent }: DuelDebugSceneProps) {
 }
 
 export interface DuelTuning {
-  attackCooldownMs: number;
+  sliceCooldownMs: number;
+  thrustCooldownMs: number;
   guardAngleToleranceDeg: number;
   stunMs: number;
   sliceKnockback: number;
@@ -74,14 +75,15 @@ export interface DuelTuning {
   minSliceReach: number;
   attackerFollowFraction: number;
   motionImmunityVelocityThreshold: number;
-  windUpMs: number;
+  sliceImpactMs: number;
+  thrustImpactMs: number;
   swingDurationMs: number;
-  thrustChargeMs: number;
 }
 
 export function tuningFromWeapon(weapon: WeaponStats): DuelTuning {
   return {
-    attackCooldownMs: weapon.attackCooldownMs,
+    sliceCooldownMs: weapon.sliceCooldownMs,
+    thrustCooldownMs: weapon.thrustCooldownMs,
     guardAngleToleranceDeg: (weapon.guardAngleTolerance * 180) / Math.PI,
     stunMs: weapon.stunMs,
     sliceKnockback: weapon.sliceKnockback,
@@ -92,15 +94,16 @@ export function tuningFromWeapon(weapon: WeaponStats): DuelTuning {
     minSliceReach: weapon.minSliceReach,
     attackerFollowFraction: weapon.attackerFollowFraction,
     motionImmunityVelocityThreshold: weapon.motionImmunityVelocityThreshold,
-    windUpMs: weapon.windUpMs,
+    sliceImpactMs: weapon.sliceImpactMs,
+    thrustImpactMs: weapon.thrustImpactMs,
     swingDurationMs: weapon.swingDurationMs,
-    thrustChargeMs: weapon.thrustChargeMs,
   };
 }
 
 export function tuningToWeaponPatch(tuning: DuelTuning): Partial<WeaponStats> {
   return {
-    attackCooldownMs: tuning.attackCooldownMs,
+    sliceCooldownMs: tuning.sliceCooldownMs,
+    thrustCooldownMs: tuning.thrustCooldownMs,
     guardAngleTolerance: (tuning.guardAngleToleranceDeg * Math.PI) / 180,
     stunMs: tuning.stunMs,
     sliceKnockback: tuning.sliceKnockback,
@@ -111,9 +114,9 @@ export function tuningToWeaponPatch(tuning: DuelTuning): Partial<WeaponStats> {
     minSliceReach: tuning.minSliceReach,
     attackerFollowFraction: tuning.attackerFollowFraction,
     motionImmunityVelocityThreshold: tuning.motionImmunityVelocityThreshold,
-    windUpMs: tuning.windUpMs,
+    sliceImpactMs: tuning.sliceImpactMs,
+    thrustImpactMs: tuning.thrustImpactMs,
     swingDurationMs: tuning.swingDurationMs,
-    thrustChargeMs: tuning.thrustChargeMs,
   };
 }
 
@@ -171,13 +174,22 @@ export function DuelDebugPanel({ tuning, onChange, onReset }: DuelDebugPanelProp
         </button>
       </div>
       <Slider
-        label="attack cooldown"
+        label="slice cooldown"
         unit="ms"
         min={150}
         max={1500}
         step={25}
-        value={tuning.attackCooldownMs}
-        onChange={(v) => update("attackCooldownMs", v)}
+        value={tuning.sliceCooldownMs}
+        onChange={(v) => update("sliceCooldownMs", v)}
+      />
+      <Slider
+        label="thrust cooldown"
+        unit="ms"
+        min={150}
+        max={1500}
+        step={25}
+        value={tuning.thrustCooldownMs}
+        onChange={(v) => update("thrustCooldownMs", v)}
       />
       <Slider
         label="guard angle tolerance"
@@ -270,22 +282,22 @@ export function DuelDebugPanel({ tuning, onChange, onReset }: DuelDebugPanelProp
         onChange={(v) => update("motionImmunityVelocityThreshold", v)}
       />
       <Slider
-        label="windUp (slice)"
+        label="slice impact"
         unit="ms"
         min={50}
         max={800}
         step={20}
-        value={tuning.windUpMs}
-        onChange={(v) => update("windUpMs", v)}
+        value={tuning.sliceImpactMs}
+        onChange={(v) => update("sliceImpactMs", v)}
       />
       <Slider
-        label="thrustCharge"
+        label="thrust impact"
         unit="ms"
         min={50}
         max={800}
         step={20}
-        value={tuning.thrustChargeMs}
-        onChange={(v) => update("thrustChargeMs", v)}
+        value={tuning.thrustImpactMs}
+        onChange={(v) => update("thrustImpactMs", v)}
       />
       <Slider
         label="swing duration"

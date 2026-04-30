@@ -35,10 +35,11 @@ const HIT_TAKEN_ANIM_URL = "/models/raw/anim_hit.fbx";
 const DEATH_ANIM_URL = "/models/raw/anim_death.fbx";
 
 // FBX 클립을 gameplay 윈도우에 맞춰 압축할 때 적용하는 timeScale 상한.
-// 너무 큰 배속은 모션이 기괴하게 보이므로 4.0(=원본의 1/4 길이)에서 자른다.
+// 너무 큰 배속은 모션이 기괴하게 보이지만 6.0까지는 허용 — rapier thrust 같은
+// 짧은 윈도우(120ms 판정 + 400ms 쿨다운)도 클립을 끝까지 재생할 수 있도록.
 // 그 이상이 필요하면 클립 자체를 더 짧게 다시 익스포트하는 게 정답.
-const ATTACK_TIMESCALE_MAX = 4.0;
-const ATTACK_TIMESCALE_MIN = 0.25;
+const ATTACK_TIMESCALE_MAX = 6.0;
+const ATTACK_TIMESCALE_MIN = 0.2;
 
 // Ringout fall (Phase 12): when |worldZ| > ARENA_RADIUS the fighter is past
 // the pedestal edge. useDuelLoop already detected ringout and the round is

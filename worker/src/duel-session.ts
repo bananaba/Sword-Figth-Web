@@ -303,10 +303,8 @@ export class DuelRoomSession {
     // wind-up + arc (otherwise they'd only ever see the impact ring). Phase
     // boundaries match the client's local-attack visual lifecycle.
     const isSlice = message.event.kind === "slice";
-    const windUpMs = isSlice ? weapon.windUpMs : weapon.thrustChargeMs;
-    const cooldownMs = isSlice
-      ? weapon.attackCooldownMs
-      : weapon.thrustCooldownMs ?? weapon.attackCooldownMs;
+    const windUpMs = isSlice ? weapon.sliceImpactMs : weapon.thrustImpactMs;
+    const cooldownMs = isSlice ? weapon.sliceCooldownMs : weapon.thrustCooldownMs;
     const inputAt = message.now;
     const impactAt = inputAt + windUpMs;
     const swingEndAt = impactAt + weapon.swingDurationMs;
@@ -344,6 +342,7 @@ export class DuelRoomSession {
       defenderFacing,
       message.now,
       weapon,
+      message.event,
     );
     this.fighters[attackerSide] = next.attacker;
     this.fighters[defenderSide] = next.defender;

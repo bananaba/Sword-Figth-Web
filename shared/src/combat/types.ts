@@ -111,8 +111,12 @@ export type WeaponId = "basic" | "charge" | "rapier";
  *  - sliceKnockback     ↓ for harder swords with bigger thrust/counter payoff
  *  - thrustKnockback    ↑ for thrust-focused weapons
  *  - counterKnockback   ↑ for counter-focused weapons
- *  - attackCooldownMs   ↓ for fast weapons
+ *  - sliceCooldownMs    ↓ for fast weapons (thrust has its own cooldown)
  *  - guardAngleTolerance ↑ for forgiving-block weapons
+ *
+ * The four timing knobs are deliberately split per attack kind so a weapon
+ * can have, e.g., a fast thrust with a heavy slice (rapier) without coupling
+ * the two. All four are required — every preset must declare them explicitly.
  */
 export interface WeaponStats {
   /** Preset id this stats object belongs to (omitted for ad-hoc test weapons). */
@@ -120,19 +124,16 @@ export interface WeaponStats {
   sliceKnockback: number;
   thrustKnockback: number;
   counterKnockback: number;
-  attackCooldownMs: number;
-  /**
-   * Optional thrust-only cooldown override. When set, thrust inputs use this
-   * instead of `attackCooldownMs` so a weapon can have a faster thrust without
-   * also speeding up its slice. Falls back to `attackCooldownMs` when undefined.
-   */
-  thrustCooldownMs?: number;
+  /** Cooldown the attacker incurs after a slice input (input-anchored). */
+  sliceCooldownMs: number;
+  /** Cooldown the attacker incurs after a thrust input (input-anchored). */
+  thrustCooldownMs: number;
   /** Half-width (radians) around perpendicular that counts as a block. */
   guardAngleTolerance: number;
   /** Length the blade tip travels during a thrust. */
   thrustReach: number;
-  /** Wind-up duration for thrust before impact lands. */
-  thrustChargeMs: number;
+  /** Time from thrust input to impact (telegraph window for the defender). */
+  thrustImpactMs: number;
   /**
    * Duration of the post-block window. Used as:
    *   - attacker's stun lockout after a perpendicular slice block or thrust block
@@ -158,11 +159,11 @@ export interface WeaponStats {
    */
   motionImmunityVelocityThreshold: number;
   /**
-   * Pre-impact telegraph time. The attacker commits the input, the sword
-   * visibly winds up to the swing-start pose for this many ms, THEN the
+   * Time from slice input to impact. The attacker commits the input, the
+   * sword visibly winds up to the swing-start pose for this many ms, THEN the
    * resolver fires. Lets the opponent read the attack and adjust guard.
    */
-  windUpMs: number;
+  sliceImpactMs: number;
   /**
    * Time the swing visually sweeps from start to end after impact. Visual-only
    * (resolver fires at impact); the value drives the recovery interpolation.

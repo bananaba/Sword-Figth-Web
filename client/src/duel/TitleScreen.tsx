@@ -65,17 +65,17 @@ export const WEAPON_PICKER_OPTIONS: readonly WeaponPreset[] = [
   {
     id: "basic",
     label: "BASIC",
-    blurb: "balanced slice + thrust",
+    blurb: "balanced",
   },
   {
     id: "charge",
     label: "CHARGE",
-    blurb: "weak slice · devastating counter",
+    blurb: "counter specialist",
   },
   {
     id: "rapier",
     label: "RAPIER",
-    blurb: "weak slice · devastating thrust",
+    blurb: "thrust specialist",
   },
 ] as const;
 

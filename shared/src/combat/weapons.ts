@@ -12,24 +12,25 @@ import type { WeaponId, WeaponStats } from "./types.js";
  *   - "rapier" : sliceKnockback ↓, thrustKnockback ↑↑, thrustReach/charge ↑/↓
  *
  * Add a new weapon strictly through `WeaponStats` — the resolver should never
- * need a switch on weapon identity.
+ * need a switch on weapon identity. All four timing fields (slice/thrust ×
+ * impact/cooldown) are required so every preset is explicit about its tempo.
  */
 export const BASIC_SWORD: WeaponStats = {
   id: "basic",
-  sliceKnockback: 4.5,
-  thrustKnockback: 8.0,
-  counterKnockback: 5.5,
-  attackCooldownMs: 600,
+  sliceKnockback: 4.0,
+  thrustKnockback: 6.0,
+  counterKnockback: 5.0,
+  sliceImpactMs: 280,
+  thrustImpactMs: 180,
+  sliceCooldownMs: 600,
   thrustCooldownMs: 400,
   guardAngleTolerance: (45 * Math.PI) / 180,
   thrustReach: 1.4,
-  thrustChargeMs: 120,
   stunMs: 1500,
   bladeLength: 1.2,
   minSliceReach: 0.35,
   attackerFollowFraction: 1.0,
   motionImmunityVelocityThreshold: 1.0,
-  windUpMs: 280,
   swingDurationMs: 120,
 };
 
@@ -44,11 +45,14 @@ export const CHARGE_SWORD: WeaponStats = {
   ...BASIC_SWORD,
   id: "charge",
   sliceKnockback: 3.0,
-  counterKnockback: 9.5,
+  thrustKnockback: 5.0,
+  counterKnockback: 7.5,
   // Slightly heavier swing — committed strikes feel weightier and the
   // longer cooldown discourages spam (you want each counter to count).
-  attackCooldownMs: 680,
-  windUpMs: 320,
+  sliceImpactMs: 320,
+  thrustImpactMs: 240,
+  sliceCooldownMs: 600,
+  thrustCooldownMs: 400,
 };
 
 /**
@@ -62,10 +66,13 @@ export const RAPIER: WeaponStats = {
   ...BASIC_SWORD,
   id: "rapier",
   sliceKnockback: 3.0,
-  thrustKnockback: 13.0,
+  thrustKnockback: 9.0,
+  counterKnockback: 4.0,
   thrustReach: 1.7,
-  thrustChargeMs: 220,
-  attackCooldownMs: 520,
+  sliceImpactMs: 300,
+  thrustImpactMs: 120,
+  sliceCooldownMs: 600,
+  thrustCooldownMs: 400,
   bladeLength: 1.4,
 };
 

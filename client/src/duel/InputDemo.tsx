@@ -186,6 +186,7 @@ export function DuelInputDemo() {
         facing,
         now,
         PLASMA_BLADE,
+        event,
       );
       playerRef.current = next.attacker;
       dummyRef.current = next.defender;

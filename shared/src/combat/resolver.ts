@@ -7,6 +7,7 @@ import {
 } from "./geometry.js";
 import type {
   AttackEvent,
+  AttackKind,
   BodyHitbox,
   FighterState,
   Outcome,
@@ -124,11 +125,16 @@ function rejected(): Outcome {
   return { kind: "rejected", knockback: 0, attackerStun: 0, defenderCounterWindow: 0 };
 }
 
+function cooldownForKind(weapon: WeaponStats, kind: AttackKind): number {
+  return kind === "slice" ? weapon.sliceCooldownMs : weapon.thrustCooldownMs;
+}
+
 /**
  * Fold an Outcome into the two fighter states. Returns new immutable state
  * objects — original references are untouched. `defenderFacing` is +1 or -1,
  * the direction the defender gets pushed on their local x axis (away from
- * the attacker).
+ * the attacker). `event` carries the input timestamp + kind so cooldown is
+ * anchored to input time and uses the per-kind cooldown (slice vs thrust).
  */
 export function applyOutcome(
   attacker: FighterState,
@@ -137,21 +143,23 @@ export function applyOutcome(
   defenderFacing: number,
   now: number,
   weapon: WeaponStats,
+  event: AttackEvent,
 ): { attacker: FighterState; defender: FighterState } {
   let nextAttacker = attacker;
   let nextDefender = defender;
 
   if (outcome.kind !== "rejected") {
     // The duel loop's `commitPending` already set a cooldown anchored to
-    // input time. Use Math.max so direct callers (tests, no-pending paths)
-    // still get a cooldown, but resolved-pending paths keep the input-anchored
-    // cooldown set earlier — preventing the cooldown from extending past
-    // input + attackCooldownMs.
+    // input time using the per-kind value. Mirror that here: anchor to
+    // `event.timestamp` and pick slice/thrust cooldown based on the attack
+    // kind so the resolver never silently overrides a thrust's faster
+    // cooldown with the slice cooldown.
+    const cooldownMs = cooldownForKind(weapon, event.kind);
     nextAttacker = {
       ...nextAttacker,
       attackCooldownUntil: Math.max(
         nextAttacker.attackCooldownUntil,
-        now + weapon.attackCooldownMs,
+        event.timestamp + cooldownMs,
       ),
     };
     if (outcome.kind === "hit" || outcome.kind === "pierce") {

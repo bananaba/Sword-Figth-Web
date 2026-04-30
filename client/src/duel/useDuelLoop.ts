@@ -321,11 +321,9 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     if (pendingRef.current) return null;
     if (Math.abs(self.velX) > weapon.motionImmunityVelocityThreshold) return null;
 
-    const windUp = kind === "slice" ? weapon.windUpMs : weapon.thrustChargeMs;
+    const windUp = kind === "slice" ? weapon.sliceImpactMs : weapon.thrustImpactMs;
     const cooldownMs =
-      kind === "thrust"
-        ? weapon.thrustCooldownMs ?? weapon.attackCooldownMs
-        : weapon.attackCooldownMs;
+      kind === "slice" ? weapon.sliceCooldownMs : weapon.thrustCooldownMs;
     const impactAt = now + windUp;
     const swingEndAt = impactAt + weapon.swingDurationMs;
     const cooldownEndAt = Math.max(now + cooldownMs, swingEndAt + 80);
@@ -480,6 +478,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       facing,
       now,
       weapon,
+      pending.event,
     );
     attackerRef.current = next.attacker;
     defenderRef.current = next.defender;
