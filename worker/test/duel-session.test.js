@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DuelRoomSession } from "../dist/duel-session.js";
+import { INITIAL_PLAYER_POS, INITIAL_OPPONENT_POS } from "@vibejam/shared";
 
 function fakeSocket() {
   return {
@@ -387,8 +388,8 @@ test("DuelRoomSession broadcasts state every fighting tick", () => {
   assert.equal(states.length, before + 1);
   const latest = states.at(-1);
   assert.equal(latest.serverNow, 8500);
-  assert.equal(latest.player.posX, -1.0);
-  assert.equal(latest.opponent.posX, 1.0);
+  assert.equal(latest.player.posX, INITIAL_PLAYER_POS);
+  assert.equal(latest.opponent.posX, INITIAL_OPPONENT_POS);
   assert.equal(latest.player.velX, 0);
   assert.deepEqual(latest.player.guard, {
     active: false,
