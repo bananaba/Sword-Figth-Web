@@ -58,9 +58,14 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: yarn workspace @vibejam/shared build
       - run: yarn workspace @vibejam/client build
+      - name: Extract commit subject
+        id: commit_meta
+        run: |
+          subject=$(git log -1 --pretty=%s | tr -d '"`$\\' | head -c 200)
+          echo "subject=${subject}" >> "$GITHUB_OUTPUT"
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "3.114.17"
-          command: pages deploy client/dist --project-name=chambara-duel --branch=main --commit-dirty=true
+          command: pages deploy client/dist --project-name=chambara-duel --branch=main --commit-dirty=true --commit-hash=${{ github.sha }} --commit-message="${{ steps.commit_meta.outputs.subject }}"
