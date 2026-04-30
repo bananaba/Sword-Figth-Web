@@ -170,6 +170,10 @@ function GameStage({
         fighters.player,
         duel.opponentWeapon.current,
         now,
+        // Scale by timeScale so the AI's blade smoothing matches hit-stop /
+        // pre-KO slow-mo — otherwise the bot's hand keeps moving at full
+        // speed while the rest of the world is frozen.
+        dt * timeScale,
         DEFAULT_AI,
       );
       aiRef.current = aiResult.newAi;
