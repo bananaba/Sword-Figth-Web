@@ -72,13 +72,6 @@ export interface FighterState {
   stunUntil: number;
   /** Wall-clock ms; before this timestamp the fighter's next attack uses counterKnockback. */
   counterUntil: number;
-  /**
-   * Wall-clock ms; while `now < tradeImmuneUntil` this fighter cannot be hit.
-   * Set on whoever LANDS an attack — they get a brief grace where retaliation
-   * within the same exchange is voided. Prevents "I hit you, you hit me back
-   * one frame later" trades and forces a clean mind-game beat between hits.
-   */
-  tradeImmuneUntil: number;
   /** Latest guard snapshot from this fighter. */
   guard: GuardSnapshot;
 }
@@ -148,8 +141,6 @@ export interface WeaponStats {
    * resolve as MISS — you can't hit cleanly while sliding.
    */
   motionImmunityVelocityThreshold: number;
-  /** Grace window (ms) granted to whoever landed a HIT/PIERCE — they cannot be hit back during it. */
-  tradeImmuneMs: number;
   /**
    * Pre-impact telegraph time. The attacker commits the input, the sword
    * visibly winds up to the swing-start pose for this many ms, THEN the

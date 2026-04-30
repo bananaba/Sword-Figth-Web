@@ -22,15 +22,15 @@
 - **공격 라이프사이클**: input → windUp → impact → swing → recovery (`useDuelLoop`이 timeline 관리, resolver는 impact 시점만 발동).
 - **결정 트리** (`resolveAttack`):
   ```
-  stunUntil/motion/tradeImmune 가드 → MISS/REJECTED
+  stunUntil/motion 가드             → MISS/REJECTED
   thrust + guard active            → BLOCK + STUN
   thrust + 무방비                  → HIT (counterActive ? counterKnockback : thrustKnockback)
   slice + 가드 비활성/비교차       → HIT
   slice + 가드 perp 교차           → BLOCK + STUN + counter window
   slice + 가드 평행 교차           → PIERCE
   ```
-- **applyOutcome** (Phase 7):
-  - `hit`/`pierce` → 공격자 `tradeImmuneUntil` + **defender `stunUntil = 0`** (피격 시 stun 즉시 해제)
+- **applyOutcome**:
+  - `hit`/`pierce` → **defender `stunUntil = 0`** (피격 시 stun 즉시 해제). post-hit 무적은 제거됨; 연속 공격 방지는 cooldown/pending gate가 담당.
   - `block` → `attackerStun > 0`이면 공격자 stun, `defenderCounterWindow > 0`이면 디펜더 카운터
   - 넉백: `attackerFollowFraction = 1.0` → 거리 보존 (양쪽 같은 속도로 이동)
 

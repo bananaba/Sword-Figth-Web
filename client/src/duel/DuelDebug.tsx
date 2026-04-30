@@ -74,7 +74,6 @@ export interface DuelTuning {
   minSliceReach: number;
   attackerFollowFraction: number;
   motionImmunityVelocityThreshold: number;
-  tradeImmuneMs: number;
   windUpMs: number;
   swingDurationMs: number;
   thrustChargeMs: number;
@@ -93,7 +92,6 @@ export function tuningFromWeapon(weapon: WeaponStats): DuelTuning {
     minSliceReach: weapon.minSliceReach,
     attackerFollowFraction: weapon.attackerFollowFraction,
     motionImmunityVelocityThreshold: weapon.motionImmunityVelocityThreshold,
-    tradeImmuneMs: weapon.tradeImmuneMs,
     windUpMs: weapon.windUpMs,
     swingDurationMs: weapon.swingDurationMs,
     thrustChargeMs: weapon.thrustChargeMs,
@@ -113,7 +111,6 @@ export function tuningToWeaponPatch(tuning: DuelTuning): Partial<WeaponStats> {
     minSliceReach: tuning.minSliceReach,
     attackerFollowFraction: tuning.attackerFollowFraction,
     motionImmunityVelocityThreshold: tuning.motionImmunityVelocityThreshold,
-    tradeImmuneMs: tuning.tradeImmuneMs,
     windUpMs: tuning.windUpMs,
     swingDurationMs: tuning.swingDurationMs,
     thrustChargeMs: tuning.thrustChargeMs,
@@ -271,15 +268,6 @@ export function DuelDebugPanel({ tuning, onChange, onReset }: DuelDebugPanelProp
         step={0.1}
         value={tuning.motionImmunityVelocityThreshold}
         onChange={(v) => update("motionImmunityVelocityThreshold", v)}
-      />
-      <Slider
-        label="trade immune"
-        unit="ms"
-        min={0}
-        max={800}
-        step={25}
-        value={tuning.tradeImmuneMs}
-        onChange={(v) => update("tradeImmuneMs", v)}
       />
       <Slider
         label="windUp (slice)"

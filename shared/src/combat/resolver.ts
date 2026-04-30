@@ -65,13 +65,6 @@ export function resolveAttack(
     return { kind: "miss", knockback: 0, attackerStun: 0, defenderCounterWindow: 0 };
   }
 
-  // Trade immunity (rule 3b): if the defender just landed an attack, the
-  // attacker's same-tempo retaliation is voided. Forces a clean rhythm
-  // between exchanges instead of mutual-trade chaos.
-  if (now < defender.tradeImmuneUntil) {
-    return { kind: "miss", knockback: 0, attackerStun: 0, defenderCounterWindow: 0 };
-  }
-
   const counterActive = now < attacker.counterUntil;
 
   if (event.kind === "thrust") {
@@ -199,16 +192,10 @@ export function applyOutcome(
     };
   }
 
-  // Trade immunity: whoever LANDED the hit (the attacker on hit/pierce) gets
-  // a brief grace where they cannot be hit back. This is what voids
-  // simultaneous retaliations between the two fighters. The defender's stun
-  // is also cleared — taking a hit immediately frees you from the lock so
-  // counters function as the canonical "release" for a successful read.
+  // Taking a hit immediately frees you from block stun. Follow-up pressure is
+  // controlled by attack cooldown and pending attack gates rather than a
+  // separate post-hit invulnerability timer.
   if (outcome.kind === "hit" || outcome.kind === "pierce") {
-    nextAttacker = {
-      ...nextAttacker,
-      tradeImmuneUntil: now + weapon.tradeImmuneMs,
-    };
     nextDefender = {
       ...nextDefender,
       stunUntil: 0,

@@ -27,7 +27,6 @@ export const PLASMA_BLADE: WeaponStats = {
   minSliceReach: 0.35,
   attackerFollowFraction: 1.0,
   motionImmunityVelocityThreshold: 1.0,
-  tradeImmuneMs: 250,
   windUpMs: 280,
   swingDurationMs: 120,
 };

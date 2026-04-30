@@ -122,7 +122,6 @@ function freshFighter(initZ: number): FighterState {
     attackCooldownUntil: 0,
     stunUntil: 0,
     counterUntil: 0,
-    tradeImmuneUntil: 0,
     guard: {
       active: false,
       grip: { x: 0, y: SHOULDER_Y },
@@ -177,7 +176,6 @@ function initialVisual(
     attack: null,
     stunned: false,
     cooldown: false,
-    tradeImmune: false,
     speed: 0,
     bodyColor: color,
     transparentWhenIdle,
@@ -618,7 +616,6 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       playerVisual.current.attack = pendingPlayerAttack.current;
       playerVisual.current.stunned = now < p.stunUntil;
       playerVisual.current.cooldown = now < p.attackCooldownUntil;
-      playerVisual.current.tradeImmune = now < p.tradeImmuneUntil;
       playerVisual.current.speed = Math.abs(p.velX);
 
       opponentVisual.current.worldZ = o.posX;
@@ -629,7 +626,6 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       opponentVisual.current.attack = pendingOpponentAttack.current;
       opponentVisual.current.stunned = now < o.stunUntil;
       opponentVisual.current.cooldown = now < o.attackCooldownUntil;
-      opponentVisual.current.tradeImmune = now < o.tradeImmuneUntil;
       opponentVisual.current.speed = Math.abs(o.velX);
 
       const phaseDeadline =

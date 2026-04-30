@@ -588,7 +588,6 @@ function freshFighter(posX: number): FighterState {
     attackCooldownUntil: 0,
     stunUntil: 0,
     counterUntil: 0,
-    tradeImmuneUntil: 0,
     guard: {
       active: false,
       grip: { x: 0, y: 1.15 },

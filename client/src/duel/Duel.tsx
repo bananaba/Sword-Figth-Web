@@ -36,6 +36,8 @@ import {
 
 const PLAYER_Z = -1.6;
 const OPPONENT_Z = +1.6;
+const PLAYER_MODEL_URL = "/models/X Bot.fbx";
+const OPPONENT_MODEL_URL = "/models/Y Bot.fbx";
 // Camera shake amplitude when trauma == 1.0. Tuned for over-the-shoulder
 // 3-4 unit camera distance (`research_impact_feedback_20260429.md` §3.5.2).
 const SHAKE_AMPLITUDE = 0.18;
@@ -171,8 +173,16 @@ function GameStage({
 
   return (
     <>
-      <Fighter state={duel.playerVisual} accentColor={playerAccent} />
-      <Fighter state={duel.opponentVisual} accentColor={opponentAccent} />
+      <Fighter
+        state={duel.playerVisual}
+        modelUrl={PLAYER_MODEL_URL}
+        accentColor={playerAccent}
+      />
+      <Fighter
+        state={duel.opponentVisual}
+        modelUrl={OPPONENT_MODEL_URL}
+        accentColor={opponentAccent}
+      />
       <ImpactRings />
       <SparkParticles />
       {debug && <DuelDebugScene player={duel.playerVisual} opponent={duel.opponentVisual} />}

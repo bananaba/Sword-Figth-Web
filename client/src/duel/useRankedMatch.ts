@@ -133,7 +133,6 @@ function freshFighter(initX: number): FighterState {
     attackCooldownUntil: 0,
     stunUntil: 0,
     counterUntil: 0,
-    tradeImmuneUntil: 0,
     guard: {
       active: false,
       grip: { x: 0, y: SHOULDER_Y },
@@ -155,7 +154,6 @@ function initialVisual(
     attack: null,
     stunned: false,
     cooldown: false,
-    tradeImmune: false,
     speed: 0,
     bodyColor: NEUTRAL_BODY,
     transparentWhenIdle,
@@ -709,7 +707,6 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       // broken right after a phase transition.
       playerVisual.current.stunned = haveServerClock && serverNow < tp.stunUntil;
       playerVisual.current.cooldown = haveServerClock && serverNow < tp.attackCooldownUntil;
-      playerVisual.current.tradeImmune = false;
       playerVisual.current.speed = Math.abs(tp.velX);
       playerVisual.current.attack = localPlayerAttack.current;
       playerFighter.current = {
@@ -718,7 +715,6 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
         attackCooldownUntil: tp.attackCooldownUntil,
         stunUntil: tp.stunUntil,
         counterUntil: tp.counterUntil,
-        tradeImmuneUntil: 0,
         guard: tp.guard,
       };
     }
@@ -741,7 +737,6 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
         opponentBladeTipPredictor.current.rendered;
       opponentVisual.current.stunned = haveServerClock && serverNow < to.stunUntil;
       opponentVisual.current.cooldown = haveServerClock && serverNow < to.attackCooldownUntil;
-      opponentVisual.current.tradeImmune = false;
       opponentVisual.current.speed = Math.abs(to.velX);
       // Drive opponent attack visual from the latest telegraph the server
       // broadcast — clear once its cooldown elapses so we don't render a
@@ -755,7 +750,6 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
         attackCooldownUntil: to.attackCooldownUntil,
         stunUntil: to.stunUntil,
         counterUntil: to.counterUntil,
-        tradeImmuneUntil: 0,
         guard: to.guard,
       };
     }
