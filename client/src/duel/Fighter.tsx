@@ -63,6 +63,15 @@ const DEATH_ANIM_URL = "/models/raw/anim_death.fbx";
 const ATTACK_TIMESCALE_MAX = 6.0;
 const ATTACK_TIMESCALE_MIN = 0.2;
 
+// Mixamo 슬래시/찌르기 클립은 hips 본 position track으로 root motion(앞으로
+// 한 발 이동)을 담고 있어서 게임 좌표(s.posX/s.worldZ)는 그대로인데도 시각상
+// 캐릭터가 앞쪽으로 슬라이딩한다. 이 스케일을 작게 잡아 발만 살짝 옮기는
+// 형태로 in-place에 가깝게 보정. 0 = 완전 정지, 1 = 원본. 첫 프레임 위치는
+// 보존하고 거기서의 *증분*만 곱해서 idle ↔ attack 전환 시 캐릭터가 점프하지
+// 않도록 한다.
+const ATTACK_ROOT_MOTION_FACTOR = 0.25;
+const MIXAMO_HIPS_BONE = "mixamorigHips";
+
 // Ringout fall (Phase 12): when |worldZ| > ARENA_RADIUS the fighter is past
 // the pedestal edge. useDuelLoop already detected ringout and the round is
 // freezing for ~2200ms (`ROUND_OVER_DISPLAY_MS`) — but velX gets zeroed in
@@ -466,23 +475,29 @@ export function Fighter({ state, modelUrl, accentColor, weaponId }: FighterProps
     const useOneHand = weaponId === "rapier";
     const slash45Source = useOneHand ? slash45OneFbx : slash45TwoFbx;
     const slash225Source = useOneHand ? slash225OneFbx : slash225TwoFbx;
-    const slash225Clip = slash225Source.animations[0];
+    const slash225RawClip = slash225Source.animations[0];
+    // 모든 attack/stun 클립은 hips root motion을 작게 줄여 in-place에 가깝게
+    // 만든다 (slash/thrust이 게임 좌표와 어긋나게 앞으로 슬라이딩하던 증상 fix).
+    const dampen = (clip: THREE.AnimationClip | undefined) =>
+      clip ? dampenRootMotionXZ(clip, ATTACK_ROOT_MOTION_FACTOR) : undefined;
+    const slash225Clip = dampen(slash225RawClip);
     // 270°: 225°/315° 둘 다 45° 떨어진 동률이라 안전한 원본(225°) 재사용.
-    // 315°: 전용 클립이 없어 225° 클립을 X축 미러링 (bone 좌우 swap +
-    // position.x / quaternion.y,z 부호 반전). 미러된 새 AnimationClip은
-    // mixer가 별도 action으로 인식.
-    const slash315Clip = slash225Clip ? mirrorClipX(slash225Clip) : undefined;
+    // 315°: 전용 클립이 없어 225° 원본 클립을 X축 미러링한 뒤 같은 dampen을
+    // 적용. 미러된 새 AnimationClip은 mixer가 별도 action으로 인식.
+    const slash315Clip = slash225RawClip
+      ? dampen(mirrorClipX(slash225RawClip))
+      : undefined;
     return createFighterAnimationController(model, {
       idle: idleFbx.animations[0],
-      slash_0: slash0Fbx.animations[0],
-      slash_45: slash45Source.animations[0],
-      slash_90: slash90Fbx.animations[0],
-      slash_135: slash135Fbx.animations[0],
-      slash_180: slash180Fbx.animations[0],
+      slash_0: dampen(slash0Fbx.animations[0]),
+      slash_45: dampen(slash45Source.animations[0]),
+      slash_90: dampen(slash90Fbx.animations[0]),
+      slash_135: dampen(slash135Fbx.animations[0]),
+      slash_180: dampen(slash180Fbx.animations[0]),
       slash_225: slash225Clip,
       slash_270: slash225Clip,
       slash_315: slash315Clip,
-      thrust: thrustFbx.animations[0],
+      thrust: dampen(thrustFbx.animations[0]),
       hit_guard: hitGuardFbx.animations[0],
       hit_taken: hitTakenFbx.animations[0],
       death: deathFbx.animations[0],
@@ -982,6 +997,46 @@ useFBX.preload(THRUST_ANIM_URL);
 useFBX.preload(HIT_GUARD_ANIM_URL);
 useFBX.preload(HIT_TAKEN_ANIM_URL);
 useFBX.preload(DEATH_ANIM_URL);
+
+/**
+ * Mixamo hips 본의 position 트랙 X/Z 축 변위를 첫 프레임 기준 *증분*에 대해
+ * `factor`로 곱한 새 AnimationClip을 만든다. Y(점프)는 보존. factor=0이면 완전
+ * in-place, factor=1이면 원본. 이렇게 첫 프레임 위치는 그대로 두고 변화량만
+ * 줄여야 idle ↔ attack 전환 시 캐릭터가 갑자기 점프하지 않는다.
+ *
+ * 슬래시/찌르기 클립이 한 발 앞으로 가는 root motion을 가져 게임 좌표
+ * (`s.posX`/`s.worldZ`)와 시각이 어긋나는 문제를 보정.
+ */
+function dampenRootMotionXZ(
+  clip: THREE.AnimationClip,
+  factor: number,
+  hipsBone = MIXAMO_HIPS_BONE,
+): THREE.AnimationClip {
+  if (factor === 1) return clip;
+  const tracks: THREE.KeyframeTrack[] = [];
+  const targetTrackName = `${hipsBone}.position`;
+  for (const track of clip.tracks) {
+    if (track.name !== targetTrackName) {
+      tracks.push(track.clone());
+      continue;
+    }
+    const times: number[] = Array.from(track.times as ArrayLike<number>);
+    const values: number[] = Array.from(track.values as ArrayLike<number>);
+    if (values.length >= 3) {
+      const baseX = values[0] ?? 0;
+      const baseZ = values[2] ?? 0;
+      for (let i = 0; i < values.length; i += 3) {
+        const x = values[i] ?? 0;
+        const z = values[i + 2] ?? 0;
+        values[i] = baseX + (x - baseX) * factor;
+        values[i + 2] = baseZ + (z - baseZ) * factor;
+        // values[i+1] (Y) 그대로 — 점프/체중이동은 살림
+      }
+    }
+    tracks.push(new THREE.VectorKeyframeTrack(track.name, times, values));
+  }
+  return new THREE.AnimationClip(clip.name + "_dampenedRoot", clip.duration, tracks);
+}
 
 /**
  * 클립을 X축으로 미러링한 새 AnimationClip을 생성. position.x는 부호 반전,
