@@ -21,17 +21,39 @@ const MODEL_HEIGHT = BODY_HEIGHT;
 const STUN_TINT = new THREE.Color("#facc15");
 const COOLDOWN_TINT = new THREE.Color("#475569");
 const IDLE_ANIM_URL = "/models/raw/anim_idle.fbx";
-const SLASH_ANIM_URL = "/models/raw/anim_slash.fbx";
 const THRUST_ANIM_URL = "/models/raw/anim_thrust.fbx";
+// 8방향 슬래시 클립 (Phase 17). 클립 라벨은 "검의 시작점 방향각" — 표준 수학
+// 좌표계에서 0°=+x(우), CCW 증가. 마우스 드래그(start→end)에서 시작점이
+// 어느 방향에 있느냐로 8 슬롯 중 최근접 매핑.
+//  - 0°   = 우→좌 (시작점이 우)
+//  - 45°  = 우상→좌하
+//  - 90°  = 상→하 chop (시작점이 상, 가장 흔한 모션)
+//  - 135° = 좌상→우하
+//  - 180° = 좌→우 (시작점이 좌)
+//  - 225° = 좌하→우상
+//  - 270° = 하→상 strike — 전용 클립 부재. 225°/315°와 모두 45° 동률이라
+//    안전한 원본 225° 재사용.
+//  - 315° = 우하→좌상 — 전용 클립 부재. 225°를 X축 미러링해서 새 AnimationClip을
+//    런타임에 생성.
+// 45° / 225°는 oneHand vs twoHands 두 variant가 있어 weaponId(rapier ↔
+// basic/charge)로 분기.
+const SLASH_0_ANIM_URL = "/models/new/Slash_0.fbx";
+const SLASH_45_ONE_ANIM_URL = "/models/new/Slash_45_oneHands.fbx";
+const SLASH_45_TWO_ANIM_URL = "/models/new/Slash_45_twoHands.fbx";
+const SLASH_90_ANIM_URL = "/models/new/Slash_90.fbx";
+const SLASH_135_ANIM_URL = "/models/new/Slash_135.fbx";
+const SLASH_180_ANIM_URL = "/models/new/Slash_180_1.fbx";
+const SLASH_225_ONE_ANIM_URL = "/models/new/Slash_225_oneHand.fbx";
+const SLASH_225_TWO_ANIM_URL = "/models/new/Slash_225_twoHands.fbx";
 // 가드는 별도 클립이 없다. idle 클립을 그대로 재생하면서 IK가 손 위치를
 // `s.guard.grip`으로 끌어당기고, `currentSwordPose`가 perpendicular 가드
 // segment를 반환해 검 각도가 자동으로 바뀐다 (Fighter.tsx useFrame idle 분기).
 // hit는 두 종류로 분기될 예정이라 슬롯을 미리 분리해 둔다.
 //  - hit_guard: 내 공격이 가드에 막혀 stun된 상태 (resolver의 attackerStun)
 //  - hit_taken: 피격 reaction (별도 visual 윈도우, 클립 도착 시 추가)
-// 새 클립이 들어올 때까지는 두 슬롯 모두 기존 anim_hit.fbx를 가리킨다.
-const HIT_GUARD_ANIM_URL = "/models/raw/anim_hit.fbx";
-const HIT_TAKEN_ANIM_URL = "/models/raw/anim_hit.fbx";
+// Phase 17부터 두 슬롯 모두 새 Stun.fbx 클립으로 통일 (이전 anim_hit.fbx 폐기).
+const HIT_GUARD_ANIM_URL = "/models/new/Stun.fbx";
+const HIT_TAKEN_ANIM_URL = "/models/new/Stun.fbx";
 const DEATH_ANIM_URL = "/models/raw/anim_death.fbx";
 
 // FBX 클립을 gameplay 윈도우에 맞춰 압축할 때 적용하는 timeScale 상한.
@@ -265,14 +287,86 @@ type FighterMaterial = THREE.Material & {
   };
 };
 
+type SlashSlotAngle = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
+type SlashAnimationName =
+  | "slash_0"
+  | "slash_45"
+  | "slash_90"
+  | "slash_135"
+  | "slash_180"
+  | "slash_225"
+  | "slash_270"
+  | "slash_315";
 type FighterAnimationName =
   | "idle"
-  | "slash"
+  | SlashAnimationName
   | "thrust"
   | "hit_guard"
   | "hit_taken"
   | "death";
-type AttackAnimationName = Extract<FighterAnimationName, "slash" | "thrust">;
+type AttackAnimationName = Extract<
+  FighterAnimationName,
+  SlashAnimationName | "thrust"
+>;
+
+const SLASH_SLOT_ANGLES: readonly SlashSlotAngle[] = [
+  0,
+  45,
+  90,
+  135,
+  180,
+  225,
+  270,
+  315,
+];
+
+function slashSlotName(angle: SlashSlotAngle): SlashAnimationName {
+  return `slash_${angle}` as SlashAnimationName;
+}
+
+/**
+ * 슬래시의 **시작점 방향각**을 표준 수학 좌표계로 환산: 0° = +x(우), CCW
+ * 증가, [0, 360). 클립 라벨이 "검의 시작점이 어느 방향에 있는가"라서
+ * 운동 벡터(end-start)가 아니라 그 반대(start-end) 방향각을 쓴다.
+ *  - 우→좌 (start=+x, end=-x) → 0°
+ *  - 우상→좌하                 → 45°
+ *  - 상→하 chop (시작이 +y)    → 90°
+ *  - 좌상→우하                 → 135°
+ *  - 좌→우 (start=-x)          → 180°
+ *  - 좌하→우상                 → 225°
+ *  - 하→상 strike (시작이 -y)  → 270°
+ *  - 우하→좌상                 → 315°
+ * `start`/`end`가 둘 다 fighter-local blade-plane 좌표라 facing 보정 불필요
+ * (Player attack은 amplified mouse drag, AI는 `pickSlice`가 만든 origin/dir).
+ */
+function attackDirectionAngle(start: Vec2, end: Vec2): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (Math.hypot(dx, dy) < 1e-5) return 0;
+  // 사용자 컨벤션: 클립 라벨이 좌우 반전된 형태로 잡혀 있어 dx만 부호 반전.
+  // 90° (상→하) / 270° (하→상)는 변화 없고, 0°↔180° / 45°↔135° / 225°↔315°가
+  // 짝으로 swap된다.
+  return ((Math.atan2(-dy, dx) * 180) / Math.PI + 360) % 360;
+}
+
+function nearestSlashSlot(angleDeg: number): SlashAnimationName {
+  const a = ((angleDeg % 360) + 360) % 360;
+  let best: SlashSlotAngle = 0;
+  let bestDist = Infinity;
+  for (const cand of SLASH_SLOT_ANGLES) {
+    const raw = Math.abs(a - cand);
+    const d = Math.min(raw, 360 - raw);
+    if (d < bestDist) {
+      best = cand;
+      bestDist = d;
+    }
+  }
+  return slashSlotName(best);
+}
+
+function isSlashAnimation(name: FighterAnimationName): name is SlashAnimationName {
+  return name.startsWith("slash_");
+}
 
 interface FighterAnimationController {
   mixer: THREE.AnimationMixer;
@@ -352,25 +446,64 @@ export function Fighter({ state, modelUrl, accentColor, weaponId }: FighterProps
   const trailColor = useMemo(() => new THREE.Color(palette.bright), [palette.bright]);
   const fbx = useFBX(modelUrl);
   const idleFbx = useFBX(IDLE_ANIM_URL);
-  const slashFbx = useFBX(SLASH_ANIM_URL);
+  const slash0Fbx = useFBX(SLASH_0_ANIM_URL);
+  const slash45OneFbx = useFBX(SLASH_45_ONE_ANIM_URL);
+  const slash45TwoFbx = useFBX(SLASH_45_TWO_ANIM_URL);
+  const slash90Fbx = useFBX(SLASH_90_ANIM_URL);
+  const slash135Fbx = useFBX(SLASH_135_ANIM_URL);
+  const slash180Fbx = useFBX(SLASH_180_ANIM_URL);
+  const slash225OneFbx = useFBX(SLASH_225_ONE_ANIM_URL);
+  const slash225TwoFbx = useFBX(SLASH_225_TWO_ANIM_URL);
   const thrustFbx = useFBX(THRUST_ANIM_URL);
   const hitGuardFbx = useFBX(HIT_GUARD_ANIM_URL);
   const hitTakenFbx = useFBX(HIT_TAKEN_ANIM_URL);
   const deathFbx = useFBX(DEATH_ANIM_URL);
 
   const { model, materials, rig } = useMemo(() => normalizeFighterModel(fbx), [fbx]);
-  const animation = useMemo(
-    () =>
-      createFighterAnimationController(model, {
-        idle: idleFbx.animations[0],
-        slash: slashFbx.animations[0],
-        thrust: thrustFbx.animations[0],
-        hit_guard: hitGuardFbx.animations[0],
-        hit_taken: hitTakenFbx.animations[0],
-        death: deathFbx.animations[0],
-      }),
-    [deathFbx, hitGuardFbx, hitTakenFbx, idleFbx, model, slashFbx, thrustFbx],
-  );
+  const animation = useMemo(() => {
+    // 45° / 225°는 두 손 vs 한 손 variant. rapier는 oneHand, 나머지(basic /
+    // charge)는 무게감 있는 twoHands 모션.
+    const useOneHand = weaponId === "rapier";
+    const slash45Source = useOneHand ? slash45OneFbx : slash45TwoFbx;
+    const slash225Source = useOneHand ? slash225OneFbx : slash225TwoFbx;
+    const slash225Clip = slash225Source.animations[0];
+    // 270°: 225°/315° 둘 다 45° 떨어진 동률이라 안전한 원본(225°) 재사용.
+    // 315°: 전용 클립이 없어 225° 클립을 X축 미러링 (bone 좌우 swap +
+    // position.x / quaternion.y,z 부호 반전). 미러된 새 AnimationClip은
+    // mixer가 별도 action으로 인식.
+    const slash315Clip = slash225Clip ? mirrorClipX(slash225Clip) : undefined;
+    return createFighterAnimationController(model, {
+      idle: idleFbx.animations[0],
+      slash_0: slash0Fbx.animations[0],
+      slash_45: slash45Source.animations[0],
+      slash_90: slash90Fbx.animations[0],
+      slash_135: slash135Fbx.animations[0],
+      slash_180: slash180Fbx.animations[0],
+      slash_225: slash225Clip,
+      slash_270: slash225Clip,
+      slash_315: slash315Clip,
+      thrust: thrustFbx.animations[0],
+      hit_guard: hitGuardFbx.animations[0],
+      hit_taken: hitTakenFbx.animations[0],
+      death: deathFbx.animations[0],
+    });
+  }, [
+    deathFbx,
+    hitGuardFbx,
+    hitTakenFbx,
+    idleFbx,
+    model,
+    slash0Fbx,
+    slash135Fbx,
+    slash180Fbx,
+    slash225OneFbx,
+    slash225TwoFbx,
+    slash45OneFbx,
+    slash45TwoFbx,
+    slash90Fbx,
+    thrustFbx,
+    weaponId,
+  ]);
 
   useEffect(() => {
     currentAnimationRef.current = null;
@@ -837,11 +970,61 @@ export function Fighter({ state, modelUrl, accentColor, weaponId }: FighterProps
 useFBX.preload("/models/X Bot.fbx");
 useFBX.preload("/models/Y Bot.fbx");
 useFBX.preload(IDLE_ANIM_URL);
-useFBX.preload(SLASH_ANIM_URL);
+useFBX.preload(SLASH_0_ANIM_URL);
+useFBX.preload(SLASH_45_ONE_ANIM_URL);
+useFBX.preload(SLASH_45_TWO_ANIM_URL);
+useFBX.preload(SLASH_90_ANIM_URL);
+useFBX.preload(SLASH_135_ANIM_URL);
+useFBX.preload(SLASH_180_ANIM_URL);
+useFBX.preload(SLASH_225_ONE_ANIM_URL);
+useFBX.preload(SLASH_225_TWO_ANIM_URL);
 useFBX.preload(THRUST_ANIM_URL);
 useFBX.preload(HIT_GUARD_ANIM_URL);
 useFBX.preload(HIT_TAKEN_ANIM_URL);
 useFBX.preload(DEATH_ANIM_URL);
+
+/**
+ * 클립을 X축으로 미러링한 새 AnimationClip을 생성. position.x는 부호 반전,
+ * quaternion (w, x, y, z) 중 (y, z)를 부호 반전하면 X축 미러 회전이 된다.
+ * scale은 그대로. **본 좌우 swap은 일부러 하지 않는다** — 검이 right hand
+ * bone(`rig.rightHand`)에 절대적으로 붙어서 렌더되기 때문에 swap을 하면
+ * 미러된 right hand 모션이 left bone으로 가버려 검만 right bone에 어색하게
+ * 매달리는 "검을 반대로 잡고 있는" 증상이 난다. swap 없이 부호 반전만 하면
+ * right hand가 거울에 비친 모션을 그대로 수행해 검이 손에 붙어 있다.
+ *
+ * 315° 슬래시(225° 미러)에 사용. 동일한 source clip을 mirror로 두 번 등록해도
+ * `THREE.AnimationMixer`가 새 AnimationClip 인스턴스로 보고 별도 action을
+ * 만들어 준다.
+ */
+function mirrorClipX(clip: THREE.AnimationClip, suffix = "_mirroredX"): THREE.AnimationClip {
+  const tracks: THREE.KeyframeTrack[] = [];
+  for (const track of clip.tracks) {
+    const dotIdx = track.name.lastIndexOf(".");
+    if (dotIdx < 0) {
+      tracks.push(track.clone());
+      continue;
+    }
+    const property = track.name.slice(dotIdx);
+    const times: number[] = Array.from(track.times as ArrayLike<number>);
+    const values: number[] = Array.from(track.values as ArrayLike<number>);
+
+    if (property === ".position") {
+      for (let i = 0; i < values.length; i += 3) {
+        values[i] = -(values[i] ?? 0);
+      }
+      tracks.push(new THREE.VectorKeyframeTrack(track.name, times, values));
+    } else if (property === ".quaternion") {
+      for (let i = 0; i < values.length; i += 4) {
+        values[i + 1] = -(values[i + 1] ?? 0);
+        values[i + 2] = -(values[i + 2] ?? 0);
+      }
+      tracks.push(new THREE.QuaternionKeyframeTrack(track.name, times, values));
+    } else {
+      tracks.push(track.clone());
+    }
+  }
+  return new THREE.AnimationClip(clip.name + suffix, clip.duration, tracks);
+}
 
 function createFighterAnimationController(
   model: THREE.Group,
@@ -887,10 +1070,16 @@ function desiredFighterAnimation(
     };
   }
   if (s.attack) {
-    return {
-      name: s.attack.kind === "thrust" ? "thrust" : "slash",
-      token: `attack:${s.attack.inputAt}`,
-    };
+    if (s.attack.kind === "thrust") {
+      return { name: "thrust", token: `attack:${s.attack.inputAt}` };
+    }
+    // 슬라이스: attack.start → attack.end 방향각으로 8 슬롯 중 최근접 매핑.
+    // 토큰에 슬롯명을 포함해서 같은 attack inputAt 안에서 (이론상은 안 일어나지만)
+    // 슬롯이 바뀌어도 fade-in이 깔끔히 발생하도록.
+    const slot = nearestSlashSlot(
+      attackDirectionAngle(s.attack.start, s.attack.end),
+    );
+    return { name: slot, token: `attack:${s.attack.inputAt}:${slot}` };
   }
   // 가드는 별도 애니메이션 없이 idle 위에 검/손 포즈만 덮어쓴다 —
   // useFrame의 idle IK가 `currentSwordPose`(가드 시 perpendicular segment)를
@@ -910,9 +1099,10 @@ function completeAttackAnimation(
   s: FighterVisualState,
   now: number,
 ): { name: FighterAnimationName; token: string } {
-  if (requested.name === "slash" || requested.name === "thrust") {
+  if (isAttackAnimation(requested.name)) {
+    const requestedAttackName = requested.name;
     if (
-      holdRef.current?.name !== requested.name ||
+      holdRef.current?.name !== requestedAttackName ||
       holdRef.current.token !== requested.token
     ) {
       // attack window를 hold until로 사용한다. timeScale이 클립을 이 윈도우에
@@ -920,9 +1110,9 @@ function completeAttackAnimation(
       // 일치한다. attack ref가 도중에 사라진 케이스(이론상 cooldownEndAt
       // 이전엔 useDuelLoop이 클리어 안 함)는 native clip duration으로 폴백.
       const fallback =
-        now + controller.actions[requested.name].getClip().duration * 1000;
+        now + controller.actions[requestedAttackName].getClip().duration * 1000;
       holdRef.current = {
-        name: requested.name,
+        name: requestedAttackName,
         token: requested.token,
         until: s.attack ? s.attack.cooldownEndAt : fallback,
       };
@@ -959,12 +1149,16 @@ function animationWindowMs(
   s: FighterVisualState,
   desired: { name: FighterAnimationName; token: string },
 ): number | undefined {
-  if (desired.name === "slash" || desired.name === "thrust") {
+  if (isAttackAnimation(desired.name)) {
     if (s.attack) {
       return Math.max(1, s.attack.cooldownEndAt - s.attack.inputAt);
     }
   }
   return undefined;
+}
+
+function isAttackAnimation(name: FighterAnimationName): name is AttackAnimationName {
+  return name === "thrust" || isSlashAnimation(name);
 }
 
 /**
