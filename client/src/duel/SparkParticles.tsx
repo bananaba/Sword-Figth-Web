@@ -16,10 +16,9 @@ import { useImpacts, type ImpactEvent, type ImpactKind } from "./stores/useImpac
  *   PIERCE → orange + gray "cloth" (15)
  *   KO     → white→magenta explosion (30)
  *
- * `MeshBasicMaterial.toneMapped: false` isn't an option for ShaderMaterial
- * so we sidestep ACES tone-mapping by writing colors with intensity > 1.
- * Bloom (`luminanceThreshold: 0.85`) catches the bright colors and keeps
- * the same blade-glow feel.
+ * Keep point sprites bounded in screen space while still throwing a readable
+ * burst. Distance scaling stays disabled because it can turn one particle
+ * into a giant translucent circle in the over-the-shoulder camera.
  */
 
 interface KindConfig {
@@ -34,7 +33,7 @@ interface KindConfig {
   /** Initial speed range — m/s. */
   speedMin: number;
   speedMax: number;
-  /** Point size in pixels at unit distance — scaled by `300/-z` in shader. */
+  /** Point size in screen pixels before shader clamping. */
   size: number;
   /** Y gravity in m/s² (positive = downward). 0 = floats freely. */
   gravity: number;
@@ -46,57 +45,55 @@ interface KindConfig {
   upBias: number;
 }
 
-// Boost factor pushes colors above the Bloom 0.85 luminance threshold so
-// sparks bloom like blade emissive does.
 const COLOR = (hex: string, boost: number): THREE.Color =>
   new THREE.Color(hex).multiplyScalar(boost);
 
 const CONFIGS: Record<ImpactKind, KindConfig> = {
   block: {
-    count: 10,
-    base: COLOR("#67e8f9", 1.6),
+    count: 14,
+    base: COLOR("#67e8f9", 1.15),
     altFraction: 0,
-    speedMin: 2.0,
-    speedMax: 3.6,
-    size: 12,
+    speedMin: 2.8,
+    speedMax: 5.2,
+    size: 7.0,
     gravity: 0.8,
     lifetime: 0.55,
     jitter: 0.08,
     upBias: 0.4,
   },
   hit: {
-    count: 9,
-    base: COLOR("#f472b6", 1.8),
+    count: 16,
+    base: COLOR("#f472b6", 1.25),
     altFraction: 0,
-    speedMin: 2.6,
-    speedMax: 4.2,
-    size: 14,
+    speedMin: 3.8,
+    speedMax: 6.4,
+    size: 8.5,
     gravity: 1.4,
     lifetime: 0.7,
     jitter: 0.06,
     upBias: 0.55,
   },
   pierce: {
-    count: 15,
-    base: COLOR("#fb923c", 1.7),
-    alt: COLOR("#cbd5e1", 1.1),
-    altFraction: 0.4,
-    speedMin: 2.4,
-    speedMax: 5.0,
-    size: 13,
+    count: 20,
+    base: COLOR("#fb923c", 1.25),
+    alt: COLOR("#cbd5e1", 0.95),
+    altFraction: 0.35,
+    speedMin: 3.4,
+    speedMax: 7.2,
+    size: 8.0,
     gravity: 1.1,
     lifetime: 0.85,
     jitter: 0.1,
     upBias: 0.45,
   },
   ko: {
-    count: 30,
-    base: COLOR("#ffffff", 2.4),
-    alt: COLOR("#e879f9", 1.9),
+    count: 42,
+    base: COLOR("#ffffff", 1.2),
+    alt: COLOR("#e879f9", 1.1),
     altFraction: 0.5,
-    speedMin: 3.5,
-    speedMax: 7.0,
-    size: 16,
+    speedMin: 4.5,
+    speedMax: 8.5,
+    size: 10.0,
     gravity: 0.5,
     lifetime: 1.1,
     jitter: 0.18,
@@ -126,7 +123,7 @@ void main() {
   gl_Position = projectionMatrix * mv;
   // Shrink as the particle ages so it dies out cleanly.
   float fade = 1.0 - vAge;
-  float pixelSize = aSize * fade * (300.0 / -mv.z);
+  float pixelSize = clamp(aSize * fade, 0.0, 24.0);
   // Collapse expired or unallocated slots to zero size — they'll be
   // discarded by the rasteriser.
   if (t < 0.0 || t >= aLifetime || aLifetime <= 0.0) pixelSize = 0.0;
@@ -143,10 +140,11 @@ void main() {
   float r = length(uv);
   // Soft circular sprite — antialiased edge between r=0.42 and r=0.5.
   float disc = 1.0 - smoothstep(0.42, 0.5, r);
-  // Hot core glow: extra brightness at the centre fades fastest.
+  // Compact hot core. Keep opacity low enough that particles read as sparks,
+  // not translucent screen-space blobs.
   float core = 1.0 - smoothstep(0.0, 0.32, r);
-  float a = disc * (1.0 - vAge);
-  vec3 c = vColor + vColor * core * 0.5;
+  float a = disc * (1.0 - vAge) * 0.9;
+  vec3 c = vColor + vColor * core * 0.32;
   gl_FragColor = vec4(c, a);
 }
 `;

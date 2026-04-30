@@ -5,6 +5,7 @@ import * as THREE from "three";
 interface WaterProps {
   level: number;
   arenaRadius: number;
+  waterRadius?: number;
 }
 
 const vertexShader = /* glsl */ `
@@ -30,13 +31,15 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uShallow;
   uniform vec3 uFoam;
   uniform float uArenaRadius;
+  uniform float uWaterRadius;
   varying vec3 vWorldPos;
 
   void main() {
     float r = length(vWorldPos.xz);
+    if (r > uWaterRadius) discard;
 
-    // Depth fade — shallow cyan close to the arena, deep navy far out.
-    float depthT = 1.0 - smoothstep(uArenaRadius + 1.0, uArenaRadius + 16.0, r);
+    // Depth fade — shallow cyan close to the arena, deep navy toward the basin wall.
+    float depthT = 1.0 - smoothstep(uArenaRadius + 0.8, uArenaRadius + 5.8, r);
     vec3 base = mix(uDeep, uShallow, depthT);
 
     // Drifting current bands — barely visible, just enough to feel alive.
@@ -44,39 +47,32 @@ const fragmentShader = /* glsl */ `
                + cos(vWorldPos.z * 0.35 + uTime * 0.28);
     band = smoothstep(1.2, 1.85, band);
 
-    // Sparkle highlights — small dense dots, sharpened with pow() instead of
-    // smoothstep so each dot stays tight rather than blurring into a blob.
-    float spX = sin(vWorldPos.x * 9.0 + uTime * 1.3);
-    float spZ = sin(vWorldPos.z * 8.5 + uTime * 1.55);
-    float sp = max(0.0, spX) * max(0.0, spZ);
-    sp = pow(sp, 14.0);
-
-    // Thin shoreline foam — narrow cyan ring right at the arena lip (~25cm).
+    // Subtle shoreline foam; keep it below bloom threshold so it never reads as a light.
     float shoreInner = smoothstep(uArenaRadius - 0.04, uArenaRadius + 0.06, r);
     float shoreOuter = 1.0 - smoothstep(uArenaRadius + 0.06, uArenaRadius + 0.28, r);
     float shore = shoreInner * shoreOuter;
 
     vec3 col = base
-             + uFoam * band * 0.08
-             + uFoam * sp * 0.55
-             + uFoam * shore * 0.95;
+             + uFoam * band * 0.045
+             + uFoam * shore * 0.08;
 
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
-export function Water({ level, arenaRadius }: WaterProps) {
+export function Water({ level, arenaRadius, waterRadius = 11.0 }: WaterProps) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
 
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
-      uDeep: { value: new THREE.Color("#0a1830") },
-      uShallow: { value: new THREE.Color("#1d416d") },
-      uFoam: { value: new THREE.Color("#7dd3fc") },
+      uDeep: { value: new THREE.Color("#071426") },
+      uShallow: { value: new THREE.Color("#173957") },
+      uFoam: { value: new THREE.Color("#6ec7ed") },
       uArenaRadius: { value: arenaRadius },
+      uWaterRadius: { value: waterRadius },
     }),
-    [arenaRadius],
+    [arenaRadius, waterRadius],
   );
 
   useFrame((_, dt) => {
@@ -90,7 +86,7 @@ export function Water({ level, arenaRadius }: WaterProps) {
       rotation={[-Math.PI / 2, 0, 0]}
       receiveShadow
     >
-      <planeGeometry args={[60, 60, 96, 96]} />
+      <planeGeometry args={[waterRadius * 2, waterRadius * 2, 96, 96]} />
       <shaderMaterial
         ref={matRef}
         uniforms={uniforms}

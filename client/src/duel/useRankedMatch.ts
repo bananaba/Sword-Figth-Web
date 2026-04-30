@@ -936,7 +936,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
     hud.current.playerWorldZ = playerVisual.current.worldZ;
     hud.current.opponentWorldZ = opponentVisual.current.worldZ;
 
-    useImpacts.getState().prune(now, 800);
+    useImpacts.getState().prune(now, 460);
   }, []);
 
   const result = useMemo<UseRankedMatchResult>(

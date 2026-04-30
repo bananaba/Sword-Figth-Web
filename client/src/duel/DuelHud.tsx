@@ -721,15 +721,15 @@ function ControlsHint() {
       style={{
         position: "absolute",
         right: 16,
-        bottom: 16,
+        bottom: 92,
         padding: 10,
-        background: "rgba(15,23,42,0.7)",
+        background: "rgba(15,23,42,0.62)",
         color: "#94a3b8",
         borderRadius: 8,
         fontSize: 11,
         fontFamily: "ui-sans-serif, system-ui",
         lineHeight: 1.6,
-        maxWidth: 260,
+        maxWidth: 240,
         backdropFilter: "blur(6px)",
       }}
     >

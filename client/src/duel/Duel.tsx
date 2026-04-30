@@ -477,10 +477,10 @@ function DuelGame({
         <EffectComposer multisampling={0}>
           <Bloom
             mipmapBlur
-            luminanceThreshold={0.85}
-            luminanceSmoothing={0.2}
-            intensity={1.4}
-            radius={0.7}
+            luminanceThreshold={0.95}
+            luminanceSmoothing={0.08}
+            intensity={0.85}
+            radius={0.32}
           />
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           <ChromaticAberration
@@ -607,10 +607,10 @@ function RankedDuelGame({
         <EffectComposer multisampling={0}>
           <Bloom
             mipmapBlur
-            luminanceThreshold={0.85}
-            luminanceSmoothing={0.2}
-            intensity={1.4}
-            radius={0.7}
+            luminanceThreshold={0.95}
+            luminanceSmoothing={0.08}
+            intensity={0.85}
+            radius={0.32}
           />
           {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
           <ChromaticAberration

@@ -728,9 +728,8 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       hud.current.playerWorldZ = p.posX;
       hud.current.opponentWorldZ = o.posX;
 
-      // Prune stale impact events from the store (kept lifetime > ring decay
-      // so ImpactRings has headroom to fade out cleanly).
-      useImpacts.getState().prune(now, 800);
+      // Keep only fresh impact shockwaves; longer-lived sparks own their own GPU lifetime.
+      useImpacts.getState().prune(now, 460);
     },
     [opts.arenaRadius, resetForNextRound],
   );

@@ -3,7 +3,7 @@ import { useRef } from "react";
 import * as THREE from "three";
 import { useImpacts, type ImpactEvent } from "./stores/useImpacts";
 
-const RING_LIFE_MS = 520;
+const RING_LIFE_MS = 360;
 
 interface RingStyle {
   color: string;
@@ -18,33 +18,33 @@ function ringStyle(kind: ImpactEvent["kind"]): RingStyle {
     case "hit":
       return {
         color: "#fde68a",
-        startRadius: 0.25,
-        endRadius: 1.45,
-        thickness: 0.22,
-        initialOpacity: 1.0,
+        startRadius: 0.18,
+        endRadius: 1.12,
+        thickness: 0.16,
+        initialOpacity: 0.9,
       };
     case "pierce":
       return {
         color: "#fda4af",
-        startRadius: 0.25,
-        endRadius: 1.6,
-        thickness: 0.26,
-        initialOpacity: 1.0,
+        startRadius: 0.18,
+        endRadius: 1.25,
+        thickness: 0.18,
+        initialOpacity: 0.95,
       };
     case "block":
       return {
         color: "#bfdbfe",
-        startRadius: 0.2,
-        endRadius: 0.95,
-        thickness: 0.16,
-        initialOpacity: 0.9,
+        startRadius: 0.14,
+        endRadius: 0.82,
+        thickness: 0.12,
+        initialOpacity: 0.75,
       };
     case "ko":
       return {
         color: "#ffffff",
-        startRadius: 0.3,
-        endRadius: 2.4,
-        thickness: 0.32,
+        startRadius: 0.35,
+        endRadius: 1.9,
+        thickness: 0.22,
         initialOpacity: 1.0,
       };
   }
@@ -62,15 +62,16 @@ function ImpactRing({ event }: { event: ImpactEvent }) {
     const radius = style.startRadius + (style.endRadius - style.startRadius) * eased;
     if (meshRef.current) {
       meshRef.current.scale.setScalar(radius);
+      meshRef.current.rotation.z += 0.025;
     }
     if (materialRef.current) {
-      materialRef.current.opacity = style.initialOpacity * (1 - tt);
+      materialRef.current.opacity = style.initialOpacity * (1 - tt) * (1 - tt);
     }
   });
 
   return (
-    <mesh ref={meshRef} position={[0, event.worldY, event.worldZ]}>
-      <ringGeometry args={[1, 1 + style.thickness, 48]} />
+    <mesh ref={meshRef} position={[0, event.worldY, event.worldZ]} renderOrder={28}>
+      <ringGeometry args={[1, 1 + style.thickness, 56]} />
       <meshBasicMaterial
         ref={materialRef}
         color={style.color}
@@ -85,10 +86,10 @@ function ImpactRing({ event }: { event: ImpactEvent }) {
 }
 
 /**
- * Renders an expanding ring per fresh impact event. Subscribes directly to
+ * Renders a fast circular shockwave per fresh impact event. Subscribes directly to
  * `useImpacts` — push from `dispatchImpactFx` triggers a re-render with the
  * new event in the array; `useDuelLoop.tick` prunes stale entries each frame
- * so rings stop rendering automatically.
+ * so shockwaves stop rendering automatically.
  */
 export function ImpactRings() {
   const events = useImpacts((s) => s.events);
