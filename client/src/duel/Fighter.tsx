@@ -11,6 +11,11 @@ export const BODY_HEIGHT = 1.7;
 export const BODY_HALF_WIDTH = 0.32;
 export const BODY_DEPTH = 0.42;
 const STUN_STAR_Y = BODY_HEIGHT + 0.65;
+// hit 클립의 root motion / 자세 변화로 model이 fighter group 내에서 이동하면
+// 별을 group local 고정 좌표에 두면 머리에서 떨어진다. head bone(있으면)을
+// 매 프레임 추적하고 그 위 이 거리만큼 띄운다. STUN_STAR_Y는 head bone이
+// 없을 때(legacy / 다른 모델)의 fallback.
+const STUN_STAR_HEAD_OFFSET = 0.45;
 const STUN_STAR_RADIUS = 0.55;
 const MODEL_HEIGHT = BODY_HEIGHT;
 const STUN_TINT = new THREE.Color("#facc15");
@@ -169,6 +174,7 @@ interface FighterRig {
   leftArm: ArmRig | null;
   rightArm: ArmRig | null;
   rightHand: THREE.Bone | null;
+  head: THREE.Bone | null;
 }
 
 function deriveBladePalette(hex: string): BladePalette {
@@ -376,13 +382,28 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
 
     }
 
-    if (stunGroupRef.current) {
+    if (stunGroupRef.current && groupRef.current) {
       stunGroupRef.current.visible = s.stunned;
       if (s.stunned) {
         const t = now * 0.005;
         stunGroupRef.current.rotation.y = t;
-        stunGroupRef.current.position.y =
-          STUN_STAR_Y + Math.sin(t * 1.6) * 0.04;
+        let baseY = STUN_STAR_Y;
+        let baseX = 0;
+        let baseZ = 0;
+        // hit 클립의 자세/루트 모션으로 model이 그룹 내에서 이동해도 별이
+        // 머리 위에 따라가도록 head bone의 world 위치를 fighter group local로
+        // 변환해서 추적. head bone이 없으면 STUN_STAR_Y 정적 fallback.
+        if (rig.head) {
+          rig.head.updateWorldMatrix(true, false);
+          const headWorld = rig.head.getWorldPosition(new THREE.Vector3());
+          const headLocal = groupRef.current.worldToLocal(headWorld);
+          baseX = headLocal.x;
+          baseZ = headLocal.z;
+          baseY = headLocal.y + STUN_STAR_HEAD_OFFSET;
+        }
+        stunGroupRef.current.position.x = baseX;
+        stunGroupRef.current.position.z = baseZ;
+        stunGroupRef.current.position.y = baseY + Math.sin(t * 1.6) * 0.04;
       }
     }
   });
@@ -675,6 +696,7 @@ function findFighterRig(model: THREE.Group): FighterRig {
     leftArm,
     rightArm,
     rightHand: rightArm?.hand ?? null,
+    head: bone("mixamorigHead") ?? null,
   };
 }
 
