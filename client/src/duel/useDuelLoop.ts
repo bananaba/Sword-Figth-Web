@@ -17,8 +17,10 @@ export type { WeaponStats };
 import type { AttackVisualState, FighterVisualState } from "./Fighter";
 import type { MouseAttack } from "./useMouseInput";
 import { dispatchImpactFx } from "./dispatchImpactFx";
+import { predictKoPotential } from "./predictKoPotential";
 import { useImpacts } from "./stores/useImpacts";
 import { useShake } from "./stores/useShake";
+import { useTimeScale } from "./stores/useTimeScale";
 
 /**
  * Internal record of an in-flight attack — what the resolver needs at impact
@@ -351,11 +353,34 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     return pending;
   };
 
+  const maybeEngagePreKoBuildup = (
+    attackerPosX: number,
+    defenderPosX: number,
+    pending: PendingAttack | null,
+    now: number,
+  ): void => {
+    if (!pending) return;
+    if (
+      !predictKoPotential(
+        attackerPosX,
+        defenderPosX,
+        weaponRef.current,
+        opts.arenaRadius,
+      )
+    )
+      return;
+    // Hold the slow-mo through the entire swing lifecycle (windup → impact
+    // → recovery). If ringout actually fires, `slowmoKo` replaces this; if
+    // the defender saves themselves (block) or the attack misses, we ease
+    // back to 1.0× after the buildup window.
+    useTimeScale.getState().preKoBuildup(pending.cooldownEndAt, now);
+  };
+
   const handlePlayerAttack = useCallback((atk: MouseAttack) => {
     if (!isFighting()) return;
     const now = performance.now();
     const event = mouseToAttackEvent(atk, weaponRef.current);
-    commitPending(
+    const pending = commitPending(
       playerStateRef,
       pendingPlayerAttack,
       event,
@@ -363,17 +388,29 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       atk.start,
       now,
     );
+    maybeEngagePreKoBuildup(
+      playerStateRef.current.posX,
+      opponentStateRef.current.posX,
+      pending,
+      now,
+    );
   }, []);
 
   const handleOpponentAttack = useCallback((event: AttackEvent) => {
     if (!isFighting()) return;
     const now = performance.now();
-    commitPending(
+    const pending = commitPending(
       opponentStateRef,
       pendingOpponentAttack,
       event,
       event.kind,
       event.origin,
+      now,
+    );
+    maybeEngagePreKoBuildup(
+      opponentStateRef.current.posX,
+      playerStateRef.current.posX,
+      pending,
       now,
     );
   }, []);

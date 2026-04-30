@@ -25,6 +25,8 @@ import {
   type UseDuelLoop,
 } from "./useDuelLoop";
 import { dispatchImpactFx } from "./dispatchImpactFx";
+import { predictKoPotential } from "./predictKoPotential";
+import { ARENA_RADIUS } from "./Arena3D";
 import { useFlash } from "./stores/useFlash";
 import { useImpacts } from "./stores/useImpacts";
 import { useShake } from "./stores/useShake";
@@ -327,6 +329,24 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
             opponentWins: wins.theirs,
           };
           phaseEndsAtServer.current = msg.phaseEndsAt;
+          // Mirror solo `useDuelLoop` ringout cinematic — fire a ko impact
+          // anchored on the loser so the slow-mo envelope replaces any
+          // active pre-KO buildup with the freeze→hold→ease KO release.
+          if (msg.reason === "ringout") {
+            const loserPosX =
+              localWinner === "player"
+                ? opponentFighter.current.posX
+                : localWinner === "opponent"
+                  ? playerFighter.current.posX
+                  : (playerFighter.current.posX + opponentFighter.current.posX) /
+                    2;
+            dispatchImpactFx("ko", {
+              attackerIsPlayer: localWinner === "player",
+              worldZ: loserPosX,
+              worldY: SHOULDER_Y,
+              now: performance.now(),
+            });
+          }
           break;
         }
         case "match_over": {
@@ -460,6 +480,24 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
             end: dragEnd,
             kind: msg.kind,
           };
+          // Cinematic pre-KO buildup for incoming swings too — the dramatic
+          // moment is the same whether we're swinging or being swung at.
+          // Telegraph timestamps are in the attacker's `Date.now()` clock, so
+          // translate to local `performance.now()` via the swing duration.
+          if (
+            predictKoPotential(
+              opponentFighter.current.posX,
+              playerFighter.current.posX,
+              weaponRef.current,
+              ARENA_RADIUS,
+            )
+          ) {
+            const localNow = performance.now();
+            const swingDurationMs = msg.cooldownEndAt - msg.inputAt;
+            useTimeScale
+              .getState()
+              .preKoBuildup(localNow + swingDurationMs, localNow);
+          }
           break;
         }
         case "error":
@@ -592,6 +630,19 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
         kind: atk.kind,
       };
       localPlayerAttackConfirmed.current = false;
+      // Cinematic pre-KO buildup. Visual-only: server still authoritatively
+      // resolves the outcome — this only slows local time so the killing
+      // blow has room to breathe (or the dramatic edge-save has room).
+      if (
+        predictKoPotential(
+          playerFighter.current.posX,
+          opponentFighter.current.posX,
+          weapon,
+          ARENA_RADIUS,
+        )
+      ) {
+        useTimeScale.getState().preKoBuildup(cooldownEndAt, now);
+      }
       // Server's `parseAttack` reads kind/origin/direction/reach from the
       // top-level message — flatten the AttackEvent so the wire format matches.
       clientRef.current?.send({
