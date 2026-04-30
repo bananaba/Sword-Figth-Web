@@ -179,6 +179,28 @@ function initialMatch(now: number): MatchState {
   };
 }
 
+function mirrorVecX(v: Vec2): Vec2 {
+  return { x: -v.x, y: v.y };
+}
+
+function mirrorGuardX(guard: GuardSnapshot): GuardSnapshot {
+  return {
+    active: guard.active,
+    grip: mirrorVecX(guard.grip),
+    tip: mirrorVecX(guard.tip),
+  };
+}
+
+function mirrorFighterNetStateX(state: FighterNetState): FighterNetState {
+  return {
+    ...state,
+    posX: -state.posX,
+    velX: -state.velX,
+    guard: mirrorGuardX(state.guard),
+    bladeTip: state.bladeTip ? mirrorVecX(state.bladeTip) : undefined,
+  };
+}
+
 /** Map server's `waiting`/`countdown`/`fighting`/`roundOver`/`matchOver`
  *  to client's `MatchPhase`. The `waiting` lobby state is presented as a
  *  client-side `countdown` so HUD rendering doesn't need to know. */
@@ -413,16 +435,8 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
             // "player at -1.6, opponent at +1.6, camera behind us looking +Z".
             // Without the negate the camera would sit on the wrong side and
             // both fighters would render at server's far end.
-            targetPlayer.current = {
-              ...msg.opponent,
-              posX: -msg.opponent.posX,
-              velX: -msg.opponent.velX,
-            };
-            targetOpponent.current = {
-              ...msg.player,
-              posX: -msg.player.posX,
-              velX: -msg.player.velX,
-            };
+            targetPlayer.current = mirrorFighterNetStateX(msg.opponent);
+            targetOpponent.current = mirrorFighterNetStateX(msg.player);
           } else {
             targetPlayer.current = msg.player;
             targetOpponent.current = msg.opponent;

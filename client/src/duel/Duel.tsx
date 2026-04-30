@@ -264,14 +264,11 @@ function GuardDirectionIndicator({
     group.visible = opacity > 0.01;
     if (!group.visible) return;
 
-    const aimDx = s.bladeTipBladePlane.x - 0;
-    const aimDy = s.bladeTipBladePlane.y - SHOULDER_Y;
-    const aimLen = Math.hypot(aimDx, aimDy);
-    const aimX = aimLen > 1e-5 ? aimDx / aimLen : 0;
-    const aimY = aimLen > 1e-5 ? aimDy / aimLen : 1;
-    const worldAimX = s.facing * aimX;
-    group.position.set(0, SHOULDER_Y, s.worldZ + GUARD_FORWARD_OFFSET + 0.08);
-    group.rotation.z = Math.atan2(aimY, worldAimX);
+    const { x: aimX, y: aimY } = guardAimDirection(s);
+    const guardWorldZ =
+      s.worldZ + s.facing * (GUARD_FORWARD_OFFSET + 0.08);
+    group.position.set(0, SHOULDER_Y, guardWorldZ);
+    group.rotation.z = Math.atan2(aimY, aimX);
 
     if (fanMaterialRef.current) {
       fanMaterialRef.current.opacity = opacity;
@@ -295,6 +292,25 @@ function GuardDirectionIndicator({
       </mesh>
     </group>
   );
+}
+
+function guardAimDirection(s: FighterVisualState): Vec2 {
+  const guardDx = s.guard.tip.x - s.guard.grip.x;
+  const guardDy = s.guard.tip.y - s.guard.grip.y;
+  const guardLen = Math.hypot(guardDx, guardDy);
+  if (s.guard.active && guardLen > 1e-5) {
+    // `buildPerpendicularGuard` stores guardDir = rotate90(aim), so recover
+    // aim with rotate-90. This keeps the UI tied to the authoritative guard
+    // segment instead of the smoothed/predicted blade-tip stream.
+    return { x: guardDy / guardLen, y: -guardDx / guardLen };
+  }
+
+  const aimDx = s.bladeTipBladePlane.x;
+  const aimDy = s.bladeTipBladePlane.y - SHOULDER_Y;
+  const aimLen = Math.hypot(aimDx, aimDy);
+  return aimLen > 1e-5
+    ? { x: aimDx / aimLen, y: aimDy / aimLen }
+    : { x: 0, y: 1 };
 }
 
 function createGuardFanTexture(): THREE.CanvasTexture {
