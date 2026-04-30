@@ -471,19 +471,29 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
             x: msg.origin.x + msg.direction.x * msg.reach,
             y: msg.origin.y + msg.direction.y * msg.reach,
           };
+          // Telegraph timestamps are in the attacker's `Date.now()` clock,
+          // but the lifecycle clear in `tick` (and Fighter.tsx's hold ref)
+          // compares against `performance.now()`. Translate via the
+          // server-clock skew anchored on each `state` message; without this
+          // `opponentAttack` never expires (Date.now() always ≫ perf.now())
+          // and the opponent freezes at the end of their first swing.
+          const localNow = performance.now();
+          const haveSkew = lastServerNow.current !== 0;
+          const skew = lastServerNow.current - lastServerNowAt.current;
+          const toLocal = (serverMs: number): number =>
+            haveSkew ? serverMs - skew : localNow + (serverMs - msg.inputAt);
+          const localCooldownEndAt = toLocal(msg.cooldownEndAt);
           opponentAttack.current = {
-            inputAt: msg.inputAt,
-            impactAt: msg.impactAt,
-            swingEndAt: msg.swingEndAt,
-            cooldownEndAt: msg.cooldownEndAt,
+            inputAt: toLocal(msg.inputAt),
+            impactAt: toLocal(msg.impactAt),
+            swingEndAt: toLocal(msg.swingEndAt),
+            cooldownEndAt: localCooldownEndAt,
             start: msg.origin,
             end: dragEnd,
             kind: msg.kind,
           };
           // Cinematic pre-KO buildup for incoming swings too — the dramatic
           // moment is the same whether we're swinging or being swung at.
-          // Telegraph timestamps are in the attacker's `Date.now()` clock, so
-          // translate to local `performance.now()` via the swing duration.
           if (
             predictKoPotential(
               opponentFighter.current.posX,
@@ -492,11 +502,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
               ARENA_RADIUS,
             )
           ) {
-            const localNow = performance.now();
-            const swingDurationMs = msg.cooldownEndAt - msg.inputAt;
-            useTimeScale
-              .getState()
-              .preKoBuildup(localNow + swingDurationMs, localNow);
+            useTimeScale.getState().preKoBuildup(localCooldownEndAt, localNow);
           }
           break;
         }

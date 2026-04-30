@@ -422,6 +422,95 @@ test("DuelRoomSession state reflects velocity after a knockback hit", () => {
   assert.ok(latest.player.velX > 0, "attacker velX should also be positive (push-along)");
 });
 
+test("DuelRoomSession forfeits the match when a player detaches mid-fight", () => {
+  const events = [];
+  const session = new DuelRoomSession("ranked-p1-p2", {
+    onMatchOver: (event) => events.push(event),
+  });
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  startFighting(session, first, second);
+
+  session.detach(first);
+
+  const matchOver = second.sent.find((m) => m.t === "match_over");
+  assert.ok(matchOver, "remaining player should receive match_over on opponent abandon");
+  assert.equal(matchOver.winner, "opponent");
+  assert.equal(matchOver.playerWins, 0);
+  assert.equal(matchOver.opponentWins, 2);
+  assert.equal(matchOver.ratings.player.before, 1000);
+  assert.equal(matchOver.ratings.opponent.before, 1120);
+  assert.ok(matchOver.ratings.opponent.delta > 0, "remaining (Ben) should gain ELO");
+  assert.ok(matchOver.ratings.player.delta < 0, "leaver (Ada) should lose ELO");
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].player.outcome, "loss");
+  assert.equal(events[0].opponent.outcome, "win");
+  assert.equal(events[0].player.playerId, "p1");
+  assert.equal(events[0].opponent.playerId, "p2");
+});
+
+test("DuelRoomSession forfeits during countdown too", () => {
+  const events = [];
+  const session = new DuelRoomSession("ranked-p1-p2", {
+    onMatchOver: (event) => events.push(event),
+  });
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  // ready'd → countdown phase but tick() has not advanced to fighting yet.
+  session.handleMessage(first, JSON.stringify({ t: "ready", now: 5000 }));
+  session.handleMessage(second, JSON.stringify({ t: "ready", now: 5000 }));
+
+  session.detach(second);
+
+  const matchOver = first.sent.find((m) => m.t === "match_over");
+  assert.ok(matchOver, "abandon during countdown should still award the match");
+  assert.equal(matchOver.winner, "player");
+  assert.equal(events.length, 1);
+});
+
+test("DuelRoomSession does not forfeit when a player drops in waiting lobby", () => {
+  const events = [];
+  const session = new DuelRoomSession("ranked-p1-p2", {
+    onMatchOver: (event) => events.push(event),
+  });
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  // Still in `waiting` — neither side `ready`'d.
+
+  session.detach(first);
+
+  assert.equal(
+    second.sent.find((m) => m.t === "match_over"),
+    undefined,
+    "no match_over should be sent before the match has started",
+  );
+  assert.equal(events.length, 0);
+});
+
+test("DuelRoomSession does not forfeit when a hello-less socket drops", () => {
+  const events = [];
+  const session = new DuelRoomSession("ranked-p1-p2", {
+    onMatchOver: (event) => events.push(event),
+  });
+  const first = fakeSocket();
+  const second = fakeSocket();
+  joinTwoPlayers(session, first, second);
+  startFighting(session, first, second);
+
+  // A speculative third connection that closes before completing `hello`
+  // should not be treated as an abandonment.
+  const ghost = fakeSocket();
+  session.attach(ghost);
+  session.detach(ghost);
+
+  assert.equal(events.length, 0);
+  assert.equal(first.sent.find((m) => m.t === "match_over"), undefined);
+});
+
 function joinTwoPlayers(session, first, second) {
   session.attach(first);
   session.handleMessage(

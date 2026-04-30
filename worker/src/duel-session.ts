@@ -85,10 +85,81 @@ export class DuelRoomSession {
 
   detach(socket: RoomSocket): void {
     const index = this.sockets.findIndex((entry) => entry.socket === socket);
-    if (index >= 0) {
-      this.sockets.splice(index, 1);
-      this.broadcastRoomState();
+    if (index < 0) return;
+    const [removed] = this.sockets.splice(index, 1);
+    const leaver = removed?.player ?? null;
+    this.broadcastRoomState();
+
+    // Forfeit-by-abandonment. If a `hello`'d player drops while a match is
+    // in flight (countdown/fighting/roundOver), the remaining side wins
+    // immediately so ELO + leaderboard reflect the result. Without this the
+    // remaining client stays in `in_match` forever and neither rating moves.
+    // Pre-match phases (`waiting`/`matchOver`) are silent — nothing to award.
+    if (!leaver) return;
+    if (this.match.phase !== "countdown" && this.match.phase !== "fighting" && this.match.phase !== "roundOver") {
+      return;
     }
+    const remainingSide = otherSide(leaver.side);
+    const remainingPlayer = this.playerForSide(remainingSide);
+    if (!remainingPlayer) return;
+    this.endMatchByAbandon(remainingSide, leaver, remainingPlayer);
+  }
+
+  private endMatchByAbandon(
+    winnerSide: DuelSide,
+    leaver: RoomPlayer,
+    remaining: RoomPlayer,
+  ): void {
+    const now = Date.now();
+    const playerInfo = winnerSide === "player" ? remaining : leaver;
+    const opponentInfo = winnerSide === "opponent" ? remaining : leaver;
+    const elo = applyEloResult({
+      playerRating: playerInfo.rating,
+      opponentRating: opponentInfo.rating,
+      score: winnerSide === "player" ? 1 : 0,
+    });
+    const ratings: MatchRatings = {
+      player: {
+        before: playerInfo.rating,
+        after: elo.nextPlayerRating,
+        delta: elo.playerDelta,
+      },
+      opponent: {
+        before: opponentInfo.rating,
+        after: elo.nextOpponentRating,
+        delta: elo.opponentDelta,
+      },
+    };
+    const playerWins = winnerSide === "player" ? WINS_TO_TAKE_MATCH : 0;
+    const opponentWins = winnerSide === "opponent" ? WINS_TO_TAKE_MATCH : 0;
+    this.match = {
+      ...this.match,
+      phase: "matchOver",
+      playerWins,
+      opponentWins,
+    };
+    this.broadcast({
+      t: "match_over",
+      winner: winnerSide,
+      playerWins,
+      opponentWins,
+      ratings,
+    });
+    this.options.onMatchOver?.({
+      player: {
+        playerId: playerInfo.playerId,
+        name: playerInfo.name,
+        rating: ratings.player.after,
+        outcome: winnerSide === "player" ? "win" : "loss",
+      },
+      opponent: {
+        playerId: opponentInfo.playerId,
+        name: opponentInfo.name,
+        rating: ratings.opponent.after,
+        outcome: winnerSide === "opponent" ? "win" : "loss",
+      },
+      at: now,
+    });
   }
 
   hasConnections(): boolean {
