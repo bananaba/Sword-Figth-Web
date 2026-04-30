@@ -1,5 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { WeaponId } from "@vibejam/shared";
+
+import { Howler } from "howler";
+
+import {
+  AUDIO_CREDITS,
+  initAudio,
+  playBgm,
+  playUiClickSfx,
+  playUiHoverSfx,
+} from "./audio";
 
 /**
  * Title-screen identity capture. Three axes — name + character + weapon —
@@ -167,11 +177,50 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
   });
   const [roomCode, setRoomCode] = useState("");
   const [generatedPrivateCode] = useState(makeRoomCode);
+  const [showCredits, setShowCredits] = useState(false);
 
   const character = findCharacter(characterId);
   const accent = character.saberColor;
 
+  // Browsers block all audio until the user has interacted with the page —
+  // there's no way around that. The flow we want is: title BGM kicks in
+  // *immediately* after the very first click / key press, regardless of
+  // which button the user touched (character picker / Solo / leaderboard
+  // / even just the name input).
+  //
+  // The earlier shape called `playBgm("title")` synchronously alongside
+  // `ctx.resume()`, but `resume()` is asynchronous — when the play() fired
+  // the AudioContext could still be suspended, so the Howl would attach
+  // its fade ramp to a context that hadn't started yet and end up at
+  // volume 0. Awaiting `resume()` *before* issuing playBgm fixes that.
+  useEffect(() => {
+    initAudio(); // warm up Howl preload (no-op if ctx is still suspended)
+    let cancelled = false;
+    const onFirstGesture = (): void => {
+      window.removeEventListener("pointerdown", onFirstGesture);
+      window.removeEventListener("keydown", onFirstGesture);
+      const ctx = Howler.ctx as AudioContext | undefined;
+      const start = (): void => {
+        if (!cancelled) playBgm("title", 300);
+      };
+      if (ctx && ctx.state !== "running") {
+        ctx.resume().then(start).catch(start);
+      } else {
+        start();
+      }
+    };
+    window.addEventListener("pointerdown", onFirstGesture);
+    window.addEventListener("keydown", onFirstGesture);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("pointerdown", onFirstGesture);
+      window.removeEventListener("keydown", onFirstGesture);
+    };
+  }, []);
+
   const handleStart = (mode: DuelMode, code?: string): void => {
+    initAudio();
+    playUiClickSfx();
     const trimmed = name.trim().slice(0, MAX_NAME_LEN);
     const finalName = trimmed || DEFAULT_NAME;
     try {
@@ -285,7 +334,11 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
               return (
                 <button
                   key={c.id}
-                  onClick={() => setCharacterId(c.id)}
+                  onMouseEnter={() => playUiHoverSfx()}
+                  onClick={() => {
+                    playUiClickSfx();
+                    setCharacterId(c.id);
+                  }}
                   style={{
                     flex: 1,
                     padding: "14px 12px",
@@ -332,7 +385,11 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
               return (
                 <button
                   key={w.id}
-                  onClick={() => setWeaponId(w.id)}
+                  onMouseEnter={() => playUiHoverSfx()}
+                  onClick={() => {
+                    playUiClickSfx();
+                    setWeaponId(w.id);
+                  }}
                   style={{
                     flex: 1,
                     padding: "12px 10px",
@@ -381,6 +438,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
 
         <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
           <button
+            onMouseEnter={() => playUiHoverSfx()}
             onClick={() => handleStart("solo")}
             style={{
               flex: 1,
@@ -399,6 +457,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
             Solo (vs AI)
           </button>
           <button
+            onMouseEnter={() => playUiHoverSfx()}
             onClick={() => handleStart("ranked")}
             style={{
               flex: 1,
@@ -446,6 +505,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
             />
           </label>
           <button
+            onMouseEnter={() => playUiHoverSfx()}
             onClick={() => handleStart("private", normalizedPrivateCode || generatedPrivateCode)}
             style={secondaryButtonStyle(accent)}
           >
@@ -468,7 +528,11 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
 
       {onShowLeaderboard && (
         <button
-          onClick={onShowLeaderboard}
+          onMouseEnter={() => playUiHoverSfx()}
+          onClick={() => {
+            playUiClickSfx();
+            onShowLeaderboard();
+          }}
           style={{
             marginTop: 18,
             padding: "8px 18px",
@@ -485,6 +549,33 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
         >
           View Leaderboard
         </button>
+      )}
+
+      <button
+        onMouseEnter={() => playUiHoverSfx()}
+        onClick={() => {
+          playUiClickSfx();
+          setShowCredits(true);
+        }}
+        style={{
+          marginTop: 12,
+          padding: "6px 14px",
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: 2,
+          color: "#64748b",
+          background: "transparent",
+          border: "1px solid #1e293b",
+          borderRadius: 6,
+          cursor: "pointer",
+          textTransform: "uppercase",
+        }}
+      >
+        Credits
+      </button>
+
+      {showCredits && (
+        <CreditsModal onClose={() => setShowCredits(false)} />
       )}
 
       <div
@@ -506,6 +597,7 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
         </div>
         <ControlRow icon="L" hint="drag" action="slice" accent="#7dd3fc" />
         <ControlRow icon="dbl" hint="click" action="thrust" accent="#fda4af" />
+        <ControlRow icon="M" hint="click" action="thrust" accent="#fda4af" />
         <ControlRow icon="R" hint="hold" action="guard" accent="#bfdbfe" />
         <div
           style={{
@@ -525,6 +617,110 @@ export function TitleScreen({ onStart, onShowLeaderboard }: TitleScreenProps) {
           50% { text-shadow: 0 0 36px #38bdf8, 0 0 96px #38bdf8; }
         }
       `}</style>
+    </div>
+  );
+}
+
+function CreditsModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(2,6,23,0.86)",
+        backdropFilter: "blur(6px)",
+        zIndex: 200,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: 720,
+          width: "100%",
+          maxHeight: "80vh",
+          overflowY: "auto",
+          background: "rgba(15,23,42,0.95)",
+          border: "1px solid #334155",
+          borderRadius: 12,
+          padding: 28,
+          color: "#e2e8f0",
+          fontFamily: "ui-sans-serif, system-ui",
+          fontSize: 13,
+          lineHeight: 1.55,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 800,
+            letterSpacing: 4,
+            color: "#7dd3fc",
+            textShadow: "0 0 12px #38bdf8",
+            marginBottom: 14,
+            fontFamily: "ui-monospace, monospace",
+          }}
+        >
+          AUDIO CREDITS
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {AUDIO_CREDITS.map((c, i) => (
+            <div
+              key={i}
+              style={{
+                padding: "10px 12px",
+                background: "rgba(2,6,23,0.6)",
+                border: "1px solid #1e293b",
+                borderRadius: 8,
+              }}
+            >
+              <div style={{ color: "#94a3b8", fontSize: 11, letterSpacing: 1.5 }}>
+                {c.category.toUpperCase()}
+              </div>
+              <div style={{ color: "#cbd5e1", fontSize: 12, marginTop: 2 }}>
+                {c.files}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12 }}>
+                {c.url ? (
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: "#7dd3fc" }}
+                  >
+                    {c.source}
+                  </a>
+                ) : (
+                  <span style={{ color: "#cbd5e1" }}>{c.source}</span>
+                )}
+                <span style={{ color: "#64748b" }}> · {c.author} · {c.license}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 18,
+            padding: "8px 22px",
+            fontSize: 12,
+            fontWeight: 800,
+            letterSpacing: 2,
+            color: "#e2e8f0",
+            background: "rgba(2,6,23,0.6)",
+            border: "1px solid #475569",
+            borderRadius: 8,
+            cursor: "pointer",
+            textTransform: "uppercase",
+          }}
+        >
+          Close
+        </button>
+      </div>
     </div>
   );
 }

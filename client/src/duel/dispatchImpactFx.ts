@@ -1,3 +1,4 @@
+import { playOutcomeSfx } from "./audio";
 import { useFlash } from "./stores/useFlash";
 import { useImpacts, type ImpactKind } from "./stores/useImpacts";
 import { useShake } from "./stores/useShake";
@@ -104,4 +105,5 @@ export function dispatchImpactFx(kind: ImpactKind, ctx: ImpactCtx): void {
     useFlash.getState().pulse(params.flash.ms, params.flash.intensity, ctx.now);
   }
   if (params.vibrate) tryVibrate(params.vibrate);
+  playOutcomeSfx(kind);
 }

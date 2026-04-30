@@ -213,7 +213,7 @@
 | 9.5 Identity + IP polish | ✅ 완료 (2026-04-29, `duel-implementation.md` §9 Phase 9.5) | 없음 |
 | 10a 디스패처 인프라 | ✅ 완료 (2026-04-29, §9 Phase 10a) | 없음 |
 | 10b 시간/공간 효과 | ✅ 완료 (2026-04-29, §9 Phase 10b) | 10a |
-| 9 Audio | ⬜ | **SFX 12개 도착** |
+| 9 Audio | ✅ 완료 (2026-05-01) | 없음 (사용자 자료 + Web Audio 합성) |
 | 11a Cloudflare 권위 룸 + state broadcast + CORS | ✅ 완료 (2026-04-29, `worker/`) | 없음 |
 | 11b 클라 네트워크 어댑터 | ✅ 완료 (2026-04-29, §9 Phase 11b) | 11a, 10a |
 | 11c 퍼시스턴스 + 리더보드 | ✅ 완료 (2026-04-29, §9 Phase 11c) | 11a |

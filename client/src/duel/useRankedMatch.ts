@@ -28,6 +28,7 @@ import {
 import { dispatchImpactFx } from "./dispatchImpactFx";
 import { predictKoPotential } from "./predictKoPotential";
 import { ARENA_RADIUS } from "./Arena3D";
+import { playBgm } from "./audio";
 import { useFlash } from "./stores/useFlash";
 import { useImpacts } from "./stores/useImpacts";
 import { useShake } from "./stores/useShake";
@@ -397,6 +398,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
               ratings: opts.recordResult === false ? null : localRatings,
             },
           });
+          playBgm(localWinner === "player" ? "victory" : "defeat");
           break;
         }
         case "state": {

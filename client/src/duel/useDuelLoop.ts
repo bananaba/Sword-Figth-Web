@@ -17,6 +17,11 @@ import {
 export type { WeaponStats };
 import type { AttackVisualState, FighterVisualState } from "./Fighter";
 import type { MouseAttack } from "./useMouseInput";
+import {
+  playBgm,
+  playCountdownBeepSfx,
+  playRoundBellSfx,
+} from "./audio";
 import { dispatchImpactFx } from "./dispatchImpactFx";
 import { predictKoPotential } from "./predictKoPotential";
 import { useImpacts } from "./stores/useImpacts";
@@ -254,6 +259,9 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const playerStateRef = useRef<FighterState>(freshFighter(opts.initialPlayerZ));
   const opponentStateRef = useRef<FighterState>(freshFighter(opts.initialOpponentZ));
   const matchRef = useRef<MatchState>(initialMatch(performance.now()));
+  // Tracks the integer second of the last countdown beep (3 / 2 / 1) so the
+  // tick loop fires each beep exactly once per second.
+  const countdownBeepRef = useRef<number>(-1);
   const weaponRef = useRef<WeaponStats>({
     ...getWeaponPreset(opts.weaponId),
     ...(opts.initialWeapon ?? {}),
@@ -562,12 +570,29 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       const phaseElapsed = now - match.phaseStartedAt;
 
       switch (match.phase) {
-        case "countdown":
+        case "countdown": {
+          // Per-second countdown beep (3-2-1) — pitch ramps up so the last
+          // beep reads as imminent.
+          const remainingSec = Math.ceil((COUNTDOWN_MS - phaseElapsed) / 1000);
+          const lastBeep = countdownBeepRef.current;
+          if (
+            remainingSec >= 1 &&
+            remainingSec <= 3 &&
+            remainingSec !== lastBeep
+          ) {
+            countdownBeepRef.current = remainingSec;
+            // 3 → 0.9, 2 → 1.0, 1 → 1.15 (rising pitch)
+            const pitch = remainingSec === 3 ? 0.9 : remainingSec === 2 ? 1.0 : 1.15;
+            playCountdownBeepSfx(pitch);
+          }
           if (phaseElapsed >= COUNTDOWN_MS) {
             resetForNextRound();
             matchRef.current = { ...match, phase: "fighting", phaseStartedAt: now };
+            countdownBeepRef.current = -1;
+            playRoundBellSfx();
           }
           break;
+        }
         case "fighting": {
           const playerOut = Math.abs(playerStateRef.current.posX) > opts.arenaRadius;
           const oppOut = Math.abs(opponentStateRef.current.posX) > opts.arenaRadius;
@@ -629,12 +654,15 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
               m.playerWins >= WINS_TO_TAKE_MATCH ||
               m.opponentWins >= WINS_TO_TAKE_MATCH
             ) {
+              const winner: RoundWinner =
+                m.playerWins >= WINS_TO_TAKE_MATCH ? "player" : "opponent";
               matchRef.current = {
                 ...m,
                 phase: "matchOver",
                 phaseStartedAt: now,
-                matchWinner: m.playerWins >= WINS_TO_TAKE_MATCH ? "player" : "opponent",
+                matchWinner: winner,
               };
+              playBgm(winner === "player" ? "victory" : "defeat");
             } else {
               matchRef.current = {
                 ...m,

@@ -11,6 +11,12 @@ import * as THREE from "three";
 import { BASIC_SWORD, type Vec2, type WeaponId } from "@vibejam/shared";
 import { ARENA_RADIUS, Arena3D } from "./Arena3D";
 import {
+  playBgm,
+  startArenaAmbient,
+  stopArenaAmbient,
+} from "./audio";
+import { AudioToggle } from "./AudioToggle";
+import {
   Fighter,
   GUARD_FORWARD_OFFSET,
   SHOULDER_Y,
@@ -104,6 +110,9 @@ function GameStage({
   const { camera } = useThree();
   const lastTime = useRef(performance.now());
   const aiRef = useRef<AiState>(initialAiState(performance.now()));
+  // Saber hum (synthesized) intentionally disabled — the saw + tremolo tone
+  // clashed with the cyberpunk BGM bed. `audio/saberHum.ts` is kept on disk
+  // so we can revisit with a smoother profile (sine-only, no LFO) later.
 
   const toWorld = useCallback(
     (screen: Vec2): Vec2 => {
@@ -326,27 +335,32 @@ function createGuardFanTexture(): THREE.CanvasTexture {
 export function Duel() {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+
+  let inner: React.ReactNode;
   if (showLeaderboard) {
-    return <LeaderboardView onBack={() => setShowLeaderboard(false)} />;
-  }
-  if (!identity) {
-    return (
+    inner = <LeaderboardView onBack={() => setShowLeaderboard(false)} />;
+  } else if (!identity) {
+    inner = (
       <TitleScreen
         onStart={setIdentity}
         onShowLeaderboard={() => setShowLeaderboard(true)}
       />
     );
-  }
-  if (identity.mode === "ranked" || identity.mode === "private") {
-    return (
+  } else if (identity.mode === "ranked" || identity.mode === "private") {
+    inner = (
       <RankedDuelGame
         identity={identity}
         onLeave={() => setIdentity(null)}
       />
     );
+  } else {
+    inner = <DuelGame identity={identity} onLeave={() => setIdentity(null)} />;
   }
   return (
-    <DuelGame identity={identity} onLeave={() => setIdentity(null)} />
+    <>
+      {inner}
+      <AudioToggle />
+    </>
   );
 }
 
@@ -388,6 +402,15 @@ function DuelGame({
   identity: Identity;
   onLeave: () => void;
 }) {
+  useEffect(() => {
+    playBgm("match");
+    startArenaAmbient();
+    return () => {
+      stopArenaAmbient();
+      playBgm("title");
+    };
+  }, []);
+
   const opponentCharacter = useMemo(
     () => pickOpponentCharacter(identity.characterId),
     [identity.characterId],
@@ -520,6 +543,16 @@ function RankedDuelGame({
   identity: Identity;
   onLeave: () => void;
 }) {
+  // Title BGM stays on through queue/connecting/waiting; the in_match
+  // useEffect below promotes to match BGM only once the duel actually starts.
+  useEffect(() => {
+    startArenaAmbient();
+    return () => {
+      stopArenaAmbient();
+      playBgm("title");
+    };
+  }, []);
+
   const playerCharacter = useMemo(
     () =>
       CHARACTER_PRESETS.find((c) => c.id === identity.characterId) ??
@@ -554,6 +587,17 @@ function RankedDuelGame({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Promote to match BGM only when the duel actually starts. While in
+  // queue/connecting/waitingForOpponent the player is staring at an overlay,
+  // not the arena — keeping the title bed there avoids a "match started!"
+  // false signal. match_over → stinger; useRankedMatch dispatches that.
+  const rankedStatus = ranked.summary.status;
+  useEffect(() => {
+    if (rankedStatus === "in_match") {
+      playBgm("match");
+    }
+  }, [rankedStatus]);
 
   const cameraInit = useMemo(
     () => ({ position: [0, 2.4, PLAYER_Z - 2.6] as [number, number, number] }),
