@@ -10,7 +10,13 @@ import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import * as THREE from "three";
 import { BASIC_SWORD, type Vec2, type WeaponId } from "@vibejam/shared";
 import { ARENA_RADIUS, Arena3D } from "./Arena3D";
-import { Fighter, SHOULDER_Y, SWORD_FORWARD_OFFSET } from "./Fighter";
+import {
+  Fighter,
+  GUARD_FORWARD_OFFSET,
+  SHOULDER_Y,
+  SWORD_FORWARD_OFFSET,
+  type FighterVisualState,
+} from "./Fighter";
 import { ImpactRings } from "./ImpactRings";
 import { SparkParticles } from "./SparkParticles";
 import { useDuelLoop, type UseDuelLoop } from "./useDuelLoop";
@@ -213,11 +219,108 @@ function GameStage({
         accentColor={opponentAccent}
         weaponId={opponentWeaponId}
       />
+      <GuardDirectionIndicator state={duel.playerVisual} accentColor={playerAccent} />
+      <GuardDirectionIndicator state={duel.opponentVisual} accentColor={opponentAccent} />
       <ImpactRings />
       <SparkParticles />
       {debug && <DuelDebugScene player={duel.playerVisual} opponent={duel.opponentVisual} />}
     </>
   );
+}
+
+function GuardDirectionIndicator({
+  state,
+  accentColor,
+}: {
+  state: React.MutableRefObject<FighterVisualState>;
+  accentColor: string;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const fanMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const fanTexture = useMemo(() => createGuardFanTexture(), []);
+
+  useFrame((_, delta) => {
+    const group = groupRef.current;
+    if (!group) return;
+    const s = state.current;
+    const active = s.guard.active && !s.stunned && !s.attack;
+    const targetOpacity = active ? 1 : 0;
+    group.userData.opacity = THREE.MathUtils.damp(
+      group.userData.opacity ?? 0,
+      targetOpacity,
+      18,
+      delta,
+    );
+    const opacity = group.userData.opacity as number;
+    group.visible = opacity > 0.01;
+    if (!group.visible) return;
+
+    const aimDx = s.bladeTipBladePlane.x - 0;
+    const aimDy = s.bladeTipBladePlane.y - SHOULDER_Y;
+    const aimLen = Math.hypot(aimDx, aimDy);
+    const aimX = aimLen > 1e-5 ? aimDx / aimLen : 0;
+    const aimY = aimLen > 1e-5 ? aimDy / aimLen : 1;
+    const worldAimX = s.facing * aimX;
+    group.position.set(0, SHOULDER_Y, s.worldZ + GUARD_FORWARD_OFFSET + 0.08);
+    group.rotation.z = Math.atan2(aimY, worldAimX);
+
+    if (fanMaterialRef.current) {
+      fanMaterialRef.current.opacity = opacity;
+    }
+  });
+
+  return (
+    <group ref={groupRef} visible={false}>
+      <mesh position={[0.42, 0, 0]} renderOrder={20}>
+        <planeGeometry args={[0.84, 0.56]} />
+        <meshBasicMaterial
+          ref={fanMaterialRef}
+          color={accentColor}
+          map={fanTexture}
+          transparent
+          opacity={0}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+function createGuardFanTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 160;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const centerY = h / 2;
+    const image = ctx.createImageData(w, h);
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        const t = x / (w - 1);
+        const halfWidth = (h * 0.08) + Math.pow(t, 0.8) * (h * 0.42);
+        const side = Math.abs(y - centerY) / halfWidth;
+        if (side > 1) continue;
+        const sideAlpha = Math.pow(1 - side, 1.15);
+        const centerGuide = Math.exp(-Math.pow(side / 0.34, 2)) * 0.12;
+        const distanceFade = 1 - Math.pow(t, 1.35) * 0.58;
+        const alpha = Math.min(0.34, (sideAlpha * 0.3 + centerGuide) * distanceFade);
+        const i = (y * w + x) * 4;
+        image.data[i] = 255;
+        image.data[i + 1] = 255;
+        image.data[i + 2] = 255;
+        image.data[i + 3] = Math.round(alpha * 255);
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 export function Duel() {

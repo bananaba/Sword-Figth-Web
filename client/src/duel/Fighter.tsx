@@ -52,6 +52,9 @@ const FALL_GRAVITY = 14.0;
 const FALL_MAX_Y = -12.0;
 const IDLE_ARM_REACH = 0.46;
 const AUTHORED_SWORD_GRIP_OFFSET = 0.06;
+export const GUARD_FORWARD_OFFSET = 0.51;
+const GUARD_HAND_Y = SHOULDER_Y - 0.18;
+const GUARD_HAND_SIDE_REACH = BODY_HALF_WIDTH * 0.5;
 
 const starShape = (() => {
   const shape = new THREE.Shape();
@@ -509,8 +512,9 @@ export function Fighter({ state, modelUrl, accentColor, weaponId }: FighterProps
     if (swordRef.current) {
       const pose = currentSwordPose(s, now, palette);
       const isAuthoredAnimation = desiredAnimation.name !== "idle";
-      let fromLocal = bladePlaneToLocal(pose.fromBladePlane, s.facing);
-      let toLocal = bladePlaneToLocal(pose.toBladePlane, s.facing);
+      const swordForwardOffset = s.guard.active ? GUARD_FORWARD_OFFSET : SWORD_FORWARD_OFFSET;
+      let fromLocal = bladePlaneToLocal(pose.fromBladePlane, s.facing, swordForwardOffset);
+      let toLocal = bladePlaneToLocal(pose.toBladePlane, s.facing, swordForwardOffset);
 
       if (desiredAnimation.name === "idle" && groupRef.current) {
         const bladeDir = toLocal.clone().sub(fromLocal).normalize();
@@ -522,9 +526,17 @@ export function Fighter({ state, modelUrl, accentColor, weaponId }: FighterProps
         const handleLen = style.handle.length;
         const topOffset = -Math.max(0.025, handleLen * 0.12);
         const bottomOffset = -handleLen + Math.max(0.025, handleLen * 0.12);
-        const rightHandLocal = fromLocal
-          .clone()
-          .add(bladeDir.clone().multiplyScalar(topOffset));
+        const rightHandLocal = s.guard.active
+          ? guardRightHandLocal(s, s.facing)
+          : fromLocal.clone().add(bladeDir.clone().multiplyScalar(topOffset));
+        if (s.guard.active) {
+          fromLocal = rightHandLocal
+            .clone()
+            .sub(bladeDir.clone().multiplyScalar(topOffset));
+          toLocal = fromLocal
+            .clone()
+            .add(bladeDir.clone().multiplyScalar(ACTIVE_BLADE_LENGTH));
+        }
         const leftHandLocal = fromLocal
           .clone()
           .add(bladeDir.clone().multiplyScalar(bottomOffset));
@@ -554,13 +566,17 @@ export function Fighter({ state, modelUrl, accentColor, weaponId }: FighterProps
           const finalLeftHandLocal = fromLocal
             .clone()
             .add(bladeDir.clone().multiplyScalar(bottomOffset));
-          const sideGuard = s.guard.active && Math.abs(fromLocal.x) > BODY_HALF_WIDTH * 0.55;
-          if (sideGuard) {
-            finalLeftHandLocal.x = -BODY_HALF_WIDTH * 0.38;
+          if (s.guard.active) {
+            finalLeftHandLocal.z = GUARD_FORWARD_OFFSET;
+            finalLeftHandLocal.x = THREE.MathUtils.clamp(
+              finalLeftHandLocal.x,
+              -BODY_HALF_WIDTH * 0.7,
+              BODY_HALF_WIDTH * 0.7,
+            );
             finalLeftHandLocal.y = THREE.MathUtils.clamp(
-              fromLocal.y - 0.08,
-              SHOULDER_Y - 0.22,
-              SHOULDER_Y + 0.18,
+              finalLeftHandLocal.y,
+              SHOULDER_Y - 0.45,
+              SHOULDER_Y + 0.08,
             );
           }
           applyIdleArmIk(
@@ -572,9 +588,7 @@ export function Fighter({ state, modelUrl, accentColor, weaponId }: FighterProps
             .applyQuaternion(groupRef.current.getWorldQuaternion(new THREE.Quaternion()))
             .normalize();
           alignHandGripAxisToWorldDirection(rig.rightArm, bladeDirWorld);
-          if (!sideGuard) {
-            alignHandGripAxisToWorldDirection(rig.leftArm, bladeDirWorld);
-          }
+          alignHandGripAxisToWorldDirection(rig.leftArm, bladeDirWorld);
           model.updateMatrixWorld(true);
         }
       } else if (isAuthoredAnimation && rig.rightHand && groupRef.current) {
@@ -1405,8 +1419,31 @@ function lerpVec(a: Vec2, b: Vec2, t: number): Vec2 {
 
 export const SWORD_FORWARD_OFFSET = 0.35;
 
-function bladePlaneToLocal(point: Vec2, facing: number): THREE.Vector3 {
-  return new THREE.Vector3(facing * point.x, point.y, SWORD_FORWARD_OFFSET);
+function guardRightHandLocal(s: FighterVisualState, facing: number): THREE.Vector3 {
+  const dx = s.bladeTipBladePlane.x - GRIP_2D.x;
+  const dy = s.bladeTipBladePlane.y - GRIP_2D.y;
+  const len = Math.hypot(dx, dy);
+  const aimX = len > 1e-5 ? dx / len : 0;
+  const aimY = len > 1e-5 ? dy / len : 1;
+  const handX = THREE.MathUtils.clamp(
+    aimX * GUARD_HAND_SIDE_REACH,
+    -GUARD_HAND_SIDE_REACH,
+    GUARD_HAND_SIDE_REACH,
+  );
+  const handY = THREE.MathUtils.clamp(
+    GUARD_HAND_Y + Math.max(0, aimY) * 0.12,
+    SHOULDER_Y - 0.26,
+    SHOULDER_Y - 0.03,
+  );
+  return new THREE.Vector3(facing * handX, handY, GUARD_FORWARD_OFFSET);
+}
+
+function bladePlaneToLocal(
+  point: Vec2,
+  facing: number,
+  forwardOffset = SWORD_FORWARD_OFFSET,
+): THREE.Vector3 {
+  return new THREE.Vector3(facing * point.x, point.y, forwardOffset);
 }
 
 /**
