@@ -18,9 +18,22 @@ const COOLDOWN_TINT = new THREE.Color("#475569");
 const IDLE_ANIM_URL = "/models/raw/anim_idle.fbx";
 const SLASH_ANIM_URL = "/models/raw/anim_slash.fbx";
 const THRUST_ANIM_URL = "/models/raw/anim_thrust.fbx";
-const BLOCK_ANIM_URL = "/models/raw/anim_block.fbx";
-const HIT_ANIM_URL = "/models/raw/anim_hit.fbx";
+// 가드는 별도 클립이 없다. idle 클립을 그대로 재생하면서 IK가 손 위치를
+// `s.guard.grip`으로 끌어당기고, `currentSwordPose`가 perpendicular 가드
+// segment를 반환해 검 각도가 자동으로 바뀐다 (Fighter.tsx useFrame idle 분기).
+// hit는 두 종류로 분기될 예정이라 슬롯을 미리 분리해 둔다.
+//  - hit_guard: 내 공격이 가드에 막혀 stun된 상태 (resolver의 attackerStun)
+//  - hit_taken: 피격 reaction (별도 visual 윈도우, 클립 도착 시 추가)
+// 새 클립이 들어올 때까지는 두 슬롯 모두 기존 anim_hit.fbx를 가리킨다.
+const HIT_GUARD_ANIM_URL = "/models/raw/anim_hit.fbx";
+const HIT_TAKEN_ANIM_URL = "/models/raw/anim_hit.fbx";
 const DEATH_ANIM_URL = "/models/raw/anim_death.fbx";
+
+// FBX 클립을 gameplay 윈도우에 맞춰 압축할 때 적용하는 timeScale 상한.
+// 너무 큰 배속은 모션이 기괴하게 보이므로 4.0(=원본의 1/4 길이)에서 자른다.
+// 그 이상이 필요하면 클립 자체를 더 짧게 다시 익스포트하는 게 정답.
+const ATTACK_TIMESCALE_MAX = 4.0;
+const ATTACK_TIMESCALE_MIN = 0.25;
 
 // Ringout fall (Phase 12): when |worldZ| > ARENA_RADIUS the fighter is past
 // the pedestal edge. useDuelLoop already detected ringout and the round is
@@ -33,6 +46,7 @@ const FALL_GRAVITY = 14.0;
 const FALL_MAX_Y = -12.0;
 const IDLE_ARM_REACH = 0.46;
 const IDLE_HANDLE_SPACING = 0.16;
+const AUTHORED_SWORD_GRIP_OFFSET = 0.06;
 
 const starShape = (() => {
   const shape = new THREE.Shape();
@@ -75,6 +89,14 @@ export interface FighterVisualState {
   /** In-flight attack (windUp → swing → recovery). null = idle. */
   attack: AttackVisualState | null;
   stunned: boolean;
+  /**
+   * Stun의 출처. `stunned`가 true일 때만 의미 있음.
+   *  - "guard": 내 공격이 상대 가드에 막혀 stun (resolver `attackerStun`)
+   *  - "hit":   피격 reaction (현재 결정론 resolver는 hit/pierce 시 stunUntil = 0
+   *             이라 visual-only 윈도우로 추후 도입 예정 — 슬롯만 미리 둠)
+   *  - null:    stun 아님
+   */
+  stunSource: "guard" | "hit" | null;
   cooldown: boolean;
   /** Current speed magnitude — used so knockback motion stays opaque. */
   speed: number;
@@ -123,7 +145,14 @@ type FighterMaterial = THREE.Material & {
   };
 };
 
-type FighterAnimationName = "idle" | "slash" | "thrust" | "block" | "hit" | "death";
+type FighterAnimationName =
+  | "idle"
+  | "slash"
+  | "thrust"
+  | "hit_guard"
+  | "hit_taken"
+  | "death";
+type AttackAnimationName = Extract<FighterAnimationName, "slash" | "thrust">;
 
 interface FighterAnimationController {
   mixer: THREE.AnimationMixer;
@@ -188,6 +217,11 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
   const currentAnimationRef = useRef<{ name: FighterAnimationName; token: string } | null>(
     null,
   );
+  const attackAnimationHoldRef = useRef<{
+    name: AttackAnimationName;
+    token: string;
+    until: number;
+  } | null>(null);
   // Tracks the moment a fighter first crosses the arena edge so the fall
   // y(t) = -½ g t² is anchored to the ringout instant rather than the
   // useFrame epoch. Reset to null whenever the fighter is back inside.
@@ -198,8 +232,8 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
   const idleFbx = useFBX(IDLE_ANIM_URL);
   const slashFbx = useFBX(SLASH_ANIM_URL);
   const thrustFbx = useFBX(THRUST_ANIM_URL);
-  const blockFbx = useFBX(BLOCK_ANIM_URL);
-  const hitFbx = useFBX(HIT_ANIM_URL);
+  const hitGuardFbx = useFBX(HIT_GUARD_ANIM_URL);
+  const hitTakenFbx = useFBX(HIT_TAKEN_ANIM_URL);
   const deathFbx = useFBX(DEATH_ANIM_URL);
 
   const { model, materials, rig } = useMemo(() => normalizeFighterModel(fbx), [fbx]);
@@ -209,16 +243,17 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
         idle: idleFbx.animations[0],
         slash: slashFbx.animations[0],
         thrust: thrustFbx.animations[0],
-        block: blockFbx.animations[0],
-        hit: hitFbx.animations[0],
+        hit_guard: hitGuardFbx.animations[0],
+        hit_taken: hitTakenFbx.animations[0],
         death: deathFbx.animations[0],
       }),
-    [blockFbx, deathFbx, hitFbx, idleFbx, model, slashFbx, thrustFbx],
+    [deathFbx, hitGuardFbx, hitTakenFbx, idleFbx, model, slashFbx, thrustFbx],
   );
 
   useEffect(() => {
     currentAnimationRef.current = null;
-    playFighterAnimation(animation, currentAnimationRef, "idle", "idle");
+    attackAnimationHoldRef.current = null;
+    playFighterAnimation(animation, currentAnimationRef, "idle", "idle", undefined);
     return () => {
       animation.mixer.stopAllAction();
     };
@@ -249,12 +284,21 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
     const s = state.current;
     const now = performance.now();
     const isOutside = Math.abs(s.worldZ) > ARENA_RADIUS;
-    const desiredAnimation = desiredFighterAnimation(s, isOutside);
+    const requestedAnimation = desiredFighterAnimation(s, isOutside);
+    const desiredAnimation = completeAttackAnimation(
+      requestedAnimation,
+      attackAnimationHoldRef,
+      animation,
+      s,
+      now,
+    );
+    const windowMs = animationWindowMs(s, desiredAnimation);
     playFighterAnimation(
       animation,
       currentAnimationRef,
       desiredAnimation.name,
       desiredAnimation.token,
+      windowMs,
     );
     animation.mixer.update(delta);
     model.updateMatrixWorld(true);
@@ -282,7 +326,7 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
     }
 
     const visuallyIdle =
-      !s.attack && !s.guard.active && !s.stunned && s.speed < 0.5;
+      desiredAnimation.name === "idle" && !s.guard.active && !s.stunned && s.speed < 0.5;
     const targetOpacity =
       s.transparentWhenIdle && visuallyIdle ? IDLE_OPACITY : ACTIVE_OPACITY;
     for (const mat of materials) {
@@ -310,12 +354,9 @@ export function Fighter({ state, modelUrl, accentColor }: FighterProps) {
         applyIdleArmIk(rig.rightArm, groupRef.current.localToWorld(rightHandLocal));
         model.updateMatrixWorld(true);
       } else if (isAuthoredAnimation && rig.rightHand && groupRef.current) {
-        const handWorld = rig.rightHand.getWorldPosition(new THREE.Vector3());
-        fromLocal = groupRef.current.worldToLocal(handWorld.clone());
-        const direction = toLocal.clone().sub(bladePlaneToLocal(pose.fromBladePlane, s.facing));
-        if (direction.lengthSq() < 1e-5) direction.set(0, 1, 0);
-        const length = Math.max(0.2, direction.length());
-        toLocal = fromLocal.clone().add(direction.normalize().multiplyScalar(length));
+        const handSword = authoredSwordSegmentFromHand(rig.rightHand, groupRef.current);
+        fromLocal = handSword.fromLocal;
+        toLocal = handSword.toLocal;
       }
 
       orientSegment(swordRef.current, fromLocal, toLocal);
@@ -393,8 +434,8 @@ useFBX.preload("/models/Y Bot.fbx");
 useFBX.preload(IDLE_ANIM_URL);
 useFBX.preload(SLASH_ANIM_URL);
 useFBX.preload(THRUST_ANIM_URL);
-useFBX.preload(BLOCK_ANIM_URL);
-useFBX.preload(HIT_ANIM_URL);
+useFBX.preload(HIT_GUARD_ANIM_URL);
+useFBX.preload(HIT_TAKEN_ANIM_URL);
 useFBX.preload(DEATH_ANIM_URL);
 
 function createFighterAnimationController(
@@ -409,7 +450,10 @@ function createFighterAnimationController(
       }
       const action = mixer.clipAction(clip);
       action.enabled = true;
-      if (name === "idle" || name === "block") {
+      // idle은 루프(가드 시에도 idle 위에 IK + 검 포즈만 덮어쓰는 방식이라
+      // 별도 block 클립을 재생하지 않는다), 그 외(slash/thrust/hit_*/death)는
+      // 1회 재생 후 마지막 포즈에 stop.
+      if (name === "idle") {
         action.setLoop(THREE.LoopRepeat, Infinity);
       } else {
         action.setLoop(THREE.LoopOnce, 1);
@@ -427,15 +471,119 @@ function desiredFighterAnimation(
   isOutside: boolean,
 ): { name: FighterAnimationName; token: string } {
   if (isOutside) return { name: "death", token: "death" };
-  if (s.stunned) return { name: "hit", token: "hit" };
+  if (s.stunned) {
+    // stunSource는 useDuelLoop / useRankedMatch가 매 tick 갱신한다. 현재는
+    // resolver 구조상 stun이 발생하면 항상 "guard"지만, 피격 reaction
+    // visual 윈도우가 추가되면 "hit" 가지가 hit_taken으로 자동 라우팅된다.
+    const source = s.stunSource ?? "guard";
+    return {
+      name: source === "hit" ? "hit_taken" : "hit_guard",
+      token: `stun:${source}`,
+    };
+  }
   if (s.attack) {
     return {
       name: s.attack.kind === "thrust" ? "thrust" : "slash",
       token: `attack:${s.attack.inputAt}`,
     };
   }
-  if (s.guard.active) return { name: "block", token: "block" };
+  // 가드는 별도 애니메이션 없이 idle 위에 검/손 포즈만 덮어쓴다 —
+  // useFrame의 idle IK가 `currentSwordPose`(가드 시 perpendicular segment)를
+  // 받아 grip 위치로 손을 끌어당긴다. 토큰을 `idle`로 통일하면 가드 토글 시
+  // 새 fadeIn이 발생하지 않아 모션이 끊기지 않는다.
   return { name: "idle", token: "idle" };
+}
+
+function completeAttackAnimation(
+  requested: { name: FighterAnimationName; token: string },
+  holdRef: React.MutableRefObject<{
+    name: AttackAnimationName;
+    token: string;
+    until: number;
+  } | null>,
+  controller: FighterAnimationController,
+  s: FighterVisualState,
+  now: number,
+): { name: FighterAnimationName; token: string } {
+  if (requested.name === "slash" || requested.name === "thrust") {
+    if (
+      holdRef.current?.name !== requested.name ||
+      holdRef.current.token !== requested.token
+    ) {
+      // attack window를 hold until로 사용한다. timeScale이 클립을 이 윈도우에
+      // 맞춰 압축하므로 클립 종료 시점과 attack 라이프사이클 종료가 정확히
+      // 일치한다. attack ref가 도중에 사라진 케이스(이론상 cooldownEndAt
+      // 이전엔 useDuelLoop이 클리어 안 함)는 native clip duration으로 폴백.
+      const fallback =
+        now + controller.actions[requested.name].getClip().duration * 1000;
+      holdRef.current = {
+        name: requested.name,
+        token: requested.token,
+        until: s.attack ? s.attack.cooldownEndAt : fallback,
+      };
+    }
+    return requested;
+  }
+
+  // Ringout and hit reactions should interrupt immediately. Idle (guard 포함 —
+  // guard는 idle 위 오버라이드)이 attack 클립 종료 전에 도착할 수 있으므로
+  // visual attack을 마지막 포즈까지 살려둔다.
+  if (
+    requested.name === "idle" &&
+    holdRef.current &&
+    now < holdRef.current.until
+  ) {
+    return { name: holdRef.current.name, token: holdRef.current.token };
+  }
+
+  if (holdRef.current && now >= holdRef.current.until) {
+    holdRef.current = null;
+  }
+  return requested;
+}
+
+/**
+ * 현재 desired animation에 대해 클립을 압축할 gameplay 윈도우를 계산한다.
+ * `undefined`를 반환하면 클립을 native 속도로 재생한다.
+ *
+ *  - slash / thrust: `s.attack.cooldownEndAt - inputAt` (전체 attack 라이프사이클)
+ *  - 그 외: undefined (idle은 loop / 가드 오버라이드, hit/death는 일단 native — 새 클립이
+ *    들어오고 윈도우가 정해지면 분기 추가)
+ */
+function animationWindowMs(
+  s: FighterVisualState,
+  desired: { name: FighterAnimationName; token: string },
+): number | undefined {
+  if (desired.name === "slash" || desired.name === "thrust") {
+    if (s.attack) {
+      return Math.max(1, s.attack.cooldownEndAt - s.attack.inputAt);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * AnimationAction의 timeScale을 클립 길이 / 목표 윈도우 비율로 맞춘다.
+ * 결과 timeScale은 `[ATTACK_TIMESCALE_MIN, ATTACK_TIMESCALE_MAX]`로 clamp.
+ * 윈도우가 너무 짧아 클립을 4배 이상 빨리 돌려야 하는 경우 cap에서 잘리고,
+ * 그러면 클립이 윈도우 안에 끝나지 못해 hold가 추가로 살짝 길어질 수 있다 —
+ * 그 시점에는 클립 자체를 더 짧게 만드는 게 정답이라 cap을 의도적으로 둔다.
+ */
+function fitClipToWindow(
+  action: THREE.AnimationAction,
+  windowMs: number | undefined,
+): void {
+  if (windowMs === undefined) {
+    action.timeScale = 1;
+    return;
+  }
+  const clipMs = action.getClip().duration * 1000;
+  const raw = clipMs / Math.max(1, windowMs);
+  action.timeScale = THREE.MathUtils.clamp(
+    raw,
+    ATTACK_TIMESCALE_MIN,
+    ATTACK_TIMESCALE_MAX,
+  );
 }
 
 function playFighterAnimation(
@@ -446,12 +594,14 @@ function playFighterAnimation(
   } | null>,
   nextName: FighterAnimationName,
   nextToken: string,
+  windowMs: number | undefined,
 ): void {
   const current = currentRef.current;
   if (current?.name === nextName && current.token === nextToken) return;
 
   const next = controller.actions[nextName];
   next.reset();
+  fitClipToWindow(next, windowMs);
   next.fadeIn(0.12);
   next.play();
 
@@ -611,8 +761,52 @@ function alignBoneToWorldDirection(
   );
 }
 
+function authoredSwordSegmentFromHand(
+  hand: THREE.Bone,
+  fighterGroup: THREE.Group,
+): { fromLocal: THREE.Vector3; toLocal: THREE.Vector3 } {
+  hand.updateWorldMatrix(true, false);
+  fighterGroup.updateWorldMatrix(true, false);
+
+  const handWorld = hand.getWorldPosition(new THREE.Vector3());
+  const handWorldQuat = hand.getWorldQuaternion(new THREE.Quaternion());
+  // Mixamo right-hand local +Y points through the fingers. For authored
+  // weapon clips this is the grip axis; using it keeps slash/thrust
+  // blade rotation tied to the actual hand animation instead of the mouse.
+  const bladeDirWorld = new THREE.Vector3(0, 1, 0)
+    .applyQuaternion(handWorldQuat)
+    .normalize();
+  const bladeBaseWorld = handWorld
+    .clone()
+    .add(bladeDirWorld.clone().multiplyScalar(AUTHORED_SWORD_GRIP_OFFSET));
+  const bladeTipWorld = bladeBaseWorld
+    .clone()
+    .add(bladeDirWorld.clone().multiplyScalar(ACTIVE_BLADE_LENGTH));
+
+  return {
+    fromLocal: fighterGroup.worldToLocal(bladeBaseWorld),
+    toLocal: fighterGroup.worldToLocal(bladeTipWorld),
+  };
+}
+
 const GRIP_2D: Vec2 = { x: 0, y: SHOULDER_Y };
 const ACTIVE_BLADE_LENGTH = 1.2;
+/**
+ * 가드 시 segment center가 chest에서 pointer 쪽으로 이동할 수 있는 최대 반경.
+ * 실제 lean 거리는 `min(|pointer - chest|, GUARD_LEAN_MAX_RADIUS)` —
+ * 마우스가 chest 안쪽에 있으면 lean이 작아 chest 정중앙에서 회전하고,
+ * 멀어질수록 그쪽으로 따라가다 이 반경 원에서 클램프된다. 즉 segment center가
+ * 반경 0~MAX의 disc 안에서 자유롭게 이동 (원 *위*가 아닌 원 *안*).
+ *
+ * 검 절반(0.6) 이상이면 검 끝이 chest를 완전히 벗어나는 과한 자세 → 그 이하로.
+ * 어깨/팔이 닿을 수 있는 거리(≈ 0.5)가 자연스러움 — 마우스를 chest에서 멀리
+ * 두면 대부분 max lean이고, 가까이 두면 chest 회전에 가까운 부드러운 전환.
+ *
+ * 게임 로직 영향 0%: shared/combat/resolver.ts의 angle-only guard model이
+ * `tip - grip` 방향만 사용하고 segment 위치는 검사하지 않으므로, 시각만
+ * lean되고 perpendicularity 판정은 그대로 유지된다.
+ */
+const GUARD_LEAN_MAX_RADIUS = 0.5;
 
 /**
  * Build a fixed-length blade segment whose **tip exactly tracks the cursor**
@@ -745,9 +939,14 @@ function currentSwordPose(
   }
 
   if (s.guard.active) {
+    // `s.bladeTipBladePlane`은 player의 경우 마우스 위치, opponent의 경우
+    // server가 보낸 predicted blade tip(랭크) 또는 가드 segment의 tip(솔로) —
+    // 어느 쪽이든 chest로부터 한 점이라 lean direction/distance를 동일 공식으로
+    // 처리할 수 있다.
+    const leaned = leanedGuardSegment(s.guard, s.bladeTipBladePlane);
     return {
-      fromBladePlane: s.guard.grip,
-      toBladePlane: s.guard.tip,
+      fromBladePlane: leaned.grip,
+      toBladePlane: leaned.tip,
       color: "#ffffff",
       emissive: palette.guard,
       emissiveIntensity: 2.2,
@@ -775,6 +974,53 @@ function easeOutQuad(t: number): number {
 }
 function lerpVec(a: Vec2, b: Vec2, t: number): Vec2 {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/**
+ * 가드 segment center를 chest에서 pointer 쪽으로 (마우스 거리에 비례한) 가변
+ * 거리만큼 이동시킨다. segment 방향(grip→tip)은 보존되므로 resolver의
+ * perpendicularity 판정에는 영향이 없고, 시각만 자유롭게 따라온다.
+ *
+ * 이전 fixed-distance 버전은 segment center가 항상 chest로부터 일정 반경의
+ * **원 위**에 놓였다. 그러면 가드가 항상 한쪽 끝까지 lean되어 마우스가
+ * chest 가까이 있을 때도 어색하게 어깨 라인까지 가 있는 자세가 됐다.
+ * 이번 버전은 center를 반경 `[0, GUARD_LEAN_MAX_RADIUS]`의 **원판(disc)**
+ * 안으로 풀어서, 마우스가 chest 가까우면 거의 회전, 멀면 max lean으로
+ * 부드럽게 보간된다.
+ *
+ * pointer는 `FighterVisualState.bladeTipBladePlane` 사용:
+ *   - player (솔로/랭크): mouse world position
+ *   - opponent (랭크): server에서 broadcast된 predicted blade tip
+ *   - opponent (솔로): 가드 활성 시 `o.guard.tip` (chest 중심 segment의 tip)
+ *     → mouseDist = bladeLength/2 = 0.6, max lean에서 클램프되어 가드 방향으로
+ *     일관되게 max lean. AI에 의도한 pointer 거리 정보가 없어 이게 fallback.
+ */
+function leanedGuardSegment(
+  guard: GuardSnapshot,
+  pointer: Vec2,
+): { grip: Vec2; tip: Vec2 } {
+  const segDx = guard.tip.x - guard.grip.x;
+  const segDy = guard.tip.y - guard.grip.y;
+  const segLen = Math.hypot(segDx, segDy);
+  // degenerate: pointer가 chest 위에 있을 때 buildPerpendicularGuard가
+  // 0 길이 segment를 줄 수 있다. 그 경우 lean 없이 그대로 반환.
+  if (segLen < 1e-5) return { grip: guard.grip, tip: guard.tip };
+
+  const dx = pointer.x - GRIP_2D.x;
+  const dy = pointer.y - GRIP_2D.y;
+  const mouseDist = Math.hypot(dx, dy);
+  if (mouseDist < 1e-5) {
+    // pointer ≈ chest → lean 0, segment 그대로 (chest 중심 회전).
+    return { grip: guard.grip, tip: guard.tip };
+  }
+
+  const leanDist = Math.min(mouseDist, GUARD_LEAN_MAX_RADIUS);
+  const cx = GRIP_2D.x + (dx / mouseDist) * leanDist;
+  const cy = GRIP_2D.y + (dy / mouseDist) * leanDist;
+  return {
+    grip: { x: cx - segDx / 2, y: cy - segDy / 2 },
+    tip: { x: cx + segDx / 2, y: cy + segDy / 2 },
+  };
 }
 
 export const SWORD_FORWARD_OFFSET = 0.35;

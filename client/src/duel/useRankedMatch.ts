@@ -153,6 +153,7 @@ function initialVisual(
     guard: { active: false, grip: { x: 0, y: SHOULDER_Y }, tip: { x: 0, y: SHOULDER_Y } },
     attack: null,
     stunned: false,
+    stunSource: null,
     cooldown: false,
     speed: 0,
     bodyColor: NEUTRAL_BODY,
@@ -706,6 +707,8 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       // arrives with guard=false → visual flickers off" makes guard feel
       // broken right after a phase transition.
       playerVisual.current.stunned = haveServerClock && serverNow < tp.stunUntil;
+      playerVisual.current.stunSource =
+        haveServerClock && serverNow < tp.stunUntil ? "guard" : null;
       playerVisual.current.cooldown = haveServerClock && serverNow < tp.attackCooldownUntil;
       playerVisual.current.speed = Math.abs(tp.velX);
       playerVisual.current.attack = localPlayerAttack.current;
@@ -736,6 +739,8 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       opponentVisual.current.bladeTipBladePlane =
         opponentBladeTipPredictor.current.rendered;
       opponentVisual.current.stunned = haveServerClock && serverNow < to.stunUntil;
+      opponentVisual.current.stunSource =
+        haveServerClock && serverNow < to.stunUntil ? "guard" : null;
       opponentVisual.current.cooldown = haveServerClock && serverNow < to.attackCooldownUntil;
       opponentVisual.current.speed = Math.abs(to.velX);
       // Drive opponent attack visual from the latest telegraph the server

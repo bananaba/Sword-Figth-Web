@@ -9,7 +9,7 @@
 | `Duel.tsx` | 루트 컴포넌트. Canvas + ACES tonemap + `<EffectComposer><Bloom>` + GameStage + HUD + Debug 토글. **카메라 추격(Z lerp) + 셰이크(X·Y 오프셋)** useFrame 로직. |
 | `Arena3D.tsx` | 4-tier 발판: 페데스탈 cylinder + 내부 디스크 + 외곽 림 + **발광 페리미터 ring**. `<Water>` 마운트 + 조명/하늘. |
 | `Water.tsx` | 스타일라이즈 워터 ShaderMaterial. 3-layer sine 변위 + 깊이 그라디언트 + 샤프 스파클(`pow(sp, 14)`) + 얇은 쇼어라인 폼. |
-| `Fighter.tsx` | xbot/ybot FBX 임시 캐릭터 + Mixamo FBX 애니메이션(`idle/slash/thrust/block/hit/death`) + **중간 회색 검 body** `#9ca3af` + drei `<Trail>` + **스턴 별 인디케이터** + **가드 텔(검 emissive flash)** + **ringout 낙하 모션**. idle은 마우스가 검 끝점이 아니라 **몸-마우스 연장선 위의 grip/tip pose**를 만들고 팔 IK가 grip을 따라간다. idle 외 공격/피격/패배 애니메이션 중에는 검을 캐릭터 손 bone 기준으로 렌더해서 손에서 떨어지지 않게 한다. `s.guard.active`일 때 검 emissiveIntensity가 0 → 3.0 lerp = **블레이드 표면 전체가 accent로 빛남(모든 각도에서 보임)**. `\|worldZ\| > ARENA_RADIUS`일 때 quadratic gravity로 group.position.y 감소 — `useDuelLoop`이 roundOver phase에서 velX를 zero로 만드므로 이 시각 낙하는 Fighter.tsx 내부에서만 처리 |
+| `Fighter.tsx` | xbot/ybot FBX 임시 캐릭터 + Mixamo FBX 애니메이션(`idle/slash/thrust/hit_guard/hit_taken/death` — block 클립 폐기, 가드는 idle 위 오버라이드) + **clip timeScale 압축**(slash/thrust을 `cooldownEndAt - inputAt` 윈도우에 맞춰 `fitClipToWindow`로 0.25~4.0× 클램프 후 자동 배속) + **중간 회색 검 body** `#9ca3af` + drei `<Trail>` + **스턴 별 인디케이터** + **가드 텔(검 emissive flash)** + **ringout 낙하 모션**. idle은 마우스가 검 끝점이 아니라 **몸-마우스 연장선 위의 grip/tip pose**를 만들고 팔 IK가 grip을 따라간다. **가드 시에도 idle 클립을 그대로 재생**하면서 `currentSwordPose`가 perpendicular guard segment를 반환하고, `leanedGuardSegment`가 segment center를 pointer 방향으로 `GUARD_LEAN_DISTANCE = 0.32` lean시켜 위/좌/우 등 가드 방향에 맞는 자세를 만든다 (resolver는 segment 방향만 사용 → 게임 로직 영향 0). idle 외 공격/피격/패배 애니메이션 중에는 검을 right-hand bone 위치 + 손목 회전(Mixamo local +Y grip axis) 기준으로 렌더해서 손에서 떨어지지 않고 각도도 애니메이션을 따른다. `s.guard.active`일 때 검 emissiveIntensity가 0 → 3.0 lerp = **블레이드 표면 전체가 accent로 빛남(모든 각도에서 보임)**. `s.stunSource`(`useDuelLoop`/`useRankedMatch`가 매 tick 갱신)에 따라 `hit_guard`/`hit_taken`으로 분기 — 현재 resolver 구조상 stun ⇒ 항상 `"guard"`이며 hit_taken은 미래 피격 reaction 윈도우용 슬롯. `\|worldZ\| > ARENA_RADIUS`일 때 quadratic gravity로 group.position.y 감소 — `useDuelLoop`이 roundOver phase에서 velX를 zero로 만드므로 이 시각 낙하는 Fighter.tsx 내부에서만 처리 |
 | `ImpactRings.tsx` | `useDuelLoop.impactEvents` ref를 폴링하는 ring 렌더러. outcome별 색상/반경/두께 + 520ms 페이드. `MeshBasicMaterial { toneMapped: false }`로 Bloom 통과. |
 | `useDuelLoop.ts` | 매치 상태머신, pendingAttack, 가드 빌더, **physics tick + FRICTION**, **`impactEvents` 큐(800ms 수명) + `RoundReason`** |
 | `useMouseInput.ts` | drag-release 슬라이스 / dbl·middle 찌르기 / R-hold 가드 |
@@ -21,7 +21,7 @@
 ## 핵심 좌표 변환 (Phase 7 이후)
 
 - **카메라**: `[0, 2.05, playerZ-1.6]` (정중앙 뒤+살짝 위), useFrame에서 player.worldZ 따라 lerp(0.22)
-- **검 위치**: fighter group 기준 blade plane에 렌더. idle은 body→mouse 방향선 위에서 팔 길이에 맞춘 pose를 계산하고, 액션 중에는 right-hand bone 위치가 grip이 된다.
+- **검 위치**: fighter group 기준 blade plane에 렌더. idle은 body→mouse 방향선 위에서 팔 길이에 맞춘 pose를 계산하고, 액션 중에는 right-hand bone 위치와 손목 회전이 grip/angle이 된다.
 - **마우스 raycast plane**: world z = `player.worldZ` (정적 z=0 아님 — 카메라/플레이어 따라 이동)
 
 ## Fighter 시각 상태 플래그
@@ -35,7 +35,7 @@
 - **`Fighter.tsx`는 시각만**. 게임 룰 결정 로직 X. 새 시각 상태(별, 글로우 등)는 `FighterVisualState` 인터페이스 + `useDuelLoop`이 매 tick 갱신.
 - **`SHOULDER_Y` / `BODY_HEIGHT` / `BODY_HALF_WIDTH` / `BODY_DEPTH`는 resolver 상수**(`useDuelLoop`이 hitbox·attack origin·sword pivot으로 사용). xbot/ybot 모델은 렌더링에서만 `BODY_HEIGHT`에 맞춰 normalize한다 — 외형만 바뀌고 게임 로직은 0 영향.
 - **idle 팔은 sword grip을 follow**. `currentSwordPose()`가 body→mouse ray 위에서 팔 reach와 검 길이의 annulus를 푼다. 마우스가 `|blade-arm|..blade+arm` 안이면 검 끝을 마우스에 정확히 두고, 불가능하면 같은 ray 위 가장 가까운 가능한 tip으로 clamp한다. `Fighter.tsx`의 간단한 two-bone IK가 양손을 손잡이 두 지점으로 당긴다.
-- **액션 중 검은 손에 붙는다**. 공격/피격/패배 등 authored animation이 재생될 때는 right-hand bone 위치를 sword grip으로 사용한다. 향후 공격 클립이 늘어나면 attack direction과 클립 메타데이터 방향을 비교해 가장 가까운 액션을 선택한다.
+- **액션 중 검은 손에 붙고 손목 각도를 따른다**. 공격/가드/피격/패배 등 authored animation이 재생될 때는 right-hand bone 위치를 sword grip으로, Mixamo right-hand local +Y를 blade axis로 사용한다. 공격 FBX는 gameplay cooldown보다 길 수 있으므로 `Fighter.tsx`가 `slash`/`thrust` 클립 종료 시점까지 visual animation을 유지한다. 피격/링아웃은 즉시 interrupt 가능하다. 향후 공격 클립이 늘어나면 attack direction과 클립 메타데이터 방향을 비교해 가장 가까운 액션을 선택한다.
 - **피격과 스턴은 분리한다**. 현재는 임시로 `hit` 클립을 스턴 시 재생하지만, 새 피격 클립이 들어오면 impact 순간 hit reaction과 지속 stun idle/loop를 별도 상태로 나눈다.
 - **카메라 lerp 속도(0.22)는 `Duel.tsx` GameStage useFrame**. 너무 느리면 추격 지연, 너무 빠르면 멀미.
 - **카메라 셰이크는 `impactEvents` 큐를 매 frame 스캔**. X·Y만 흔들고 Z는 lerp 추격 유지 — Z를 흔들면 멀미. 셰이크 강도/수명은 `Duel.tsx` SHAKE_LIFE_MS + outcome별 power 상수.

@@ -175,6 +175,7 @@ function initialVisual(
     guard: { active: false, grip: { x: 0, y: SHOULDER_Y }, tip: { x: 0, y: SHOULDER_Y } },
     attack: null,
     stunned: false,
+    stunSource: null,
     cooldown: false,
     speed: 0,
     bodyColor: color,
@@ -615,6 +616,12 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       playerVisual.current.guard = p.guard;
       playerVisual.current.attack = pendingPlayerAttack.current;
       playerVisual.current.stunned = now < p.stunUntil;
+      // resolver는 가드에 막힌 공격자에게만 stunUntil을 세팅하고
+      // (`outcome.kind === "block"` → `attackerStun = stunMs`), hit/pierce를
+      // 받은 defender는 stunUntil = 0으로 즉시 풀린다. 따라서 현재 stunUntil
+      // 윈도우는 항상 "내 공격이 가드에 막힘". 피격 reaction은 별도 클립이
+      // 들어오면 `playerHitReactUntil` 같은 visual-only ref로 추가 예정.
+      playerVisual.current.stunSource = now < p.stunUntil ? "guard" : null;
       playerVisual.current.cooldown = now < p.attackCooldownUntil;
       playerVisual.current.speed = Math.abs(p.velX);
 
@@ -625,6 +632,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       opponentVisual.current.guard = o.guard;
       opponentVisual.current.attack = pendingOpponentAttack.current;
       opponentVisual.current.stunned = now < o.stunUntil;
+      opponentVisual.current.stunSource = now < o.stunUntil ? "guard" : null;
       opponentVisual.current.cooldown = now < o.attackCooldownUntil;
       opponentVisual.current.speed = Math.abs(o.velX);
 
