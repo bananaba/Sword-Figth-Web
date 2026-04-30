@@ -1,6 +1,9 @@
 import {
   applyOutcome,
+  ARENA_RADIUS,
   getWeaponPreset,
+  INITIAL_OPPONENT_POS,
+  INITIAL_PLAYER_POS,
   resolveAttack,
   tickFighter,
   type AttackEvent,
@@ -329,11 +332,16 @@ export class DuelRoomSession {
       weapon,
       message.now,
     );
+    // Mirror solo `useDuelLoop` (`defender.posX >= attacker.posX ? +1 : -1`).
+    // Earlier slot-based facing assumed attackers always sit on their initial
+    // side; if a fighter ever crosses centerline the static sign would push
+    // the defender the wrong way.
+    const defenderFacing = defender.posX >= attacker.posX ? 1 : -1;
     const next = applyOutcome(
       attacker,
       defender,
       outcome,
-      attackerSide === "player" ? 1 : -1,
+      defenderFacing,
       message.now,
       weapon,
     );
@@ -472,8 +480,12 @@ export class DuelRoomSession {
   }
 
   private ringoutWinner(): RoundWinner | null {
-    const playerOut = this.fighters.player.posX < -ARENA_RADIUS;
-    const opponentOut = this.fighters.opponent.posX > ARENA_RADIUS;
+    // Mirror solo `useDuelLoop` (Math.abs both sides) so a fighter who somehow
+    // crosses centerline still ringouts. Earlier server-only logic checked
+    // player on -X and opponent on +X only — asymmetric vs solo and unsafe if
+    // future mechanics push past the opposite edge.
+    const playerOut = Math.abs(this.fighters.player.posX) > ARENA_RADIUS;
+    const opponentOut = Math.abs(this.fighters.opponent.posX) > ARENA_RADIUS;
     if (playerOut && opponentOut) return "draw";
     if (playerOut) return "opponent";
     if (opponentOut) return "player";
@@ -621,9 +633,6 @@ const COUNTDOWN_MS = 3000;
 const ROUND_DURATION_MS = 45_000;
 const ROUND_OVER_MS = 2200;
 const WINS_TO_TAKE_MATCH = 2;
-const INITIAL_PLAYER_POS = -1.0;
-const INITIAL_OPPONENT_POS = 1.0;
-const ARENA_RADIUS = 4.2;
 const FRICTION = 5.0;
 
 type RoundWinner = "player" | "opponent" | "draw";

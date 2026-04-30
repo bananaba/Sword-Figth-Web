@@ -84,7 +84,12 @@ export interface UseDuelLoopOptions {
   arenaRadius: number;
   /** Player's weapon — picks the base WeaponStats (basic / charge / rapier). */
   weaponId?: WeaponId;
-  /** Optional patch applied on top of the resolved preset (e.g. debug tuning). */
+  /** Opponent (AI bot) weapon. Defaults to `"basic"` so the bot's stats match
+   * its visual blade preset and so a player picking rapier doesn't make the
+   * bot also swing rapier-stat attacks. Mirrors ranked's per-side weapon
+   * authority (`duel-session.ts:weaponForSide`). */
+  opponentWeaponId?: WeaponId;
+  /** Optional patch applied on top of the resolved player preset (e.g. debug tuning). */
   initialWeapon?: Partial<WeaponStats>;
 }
 
@@ -92,9 +97,14 @@ export interface UseDuelLoop {
   playerVisual: React.MutableRefObject<FighterVisualState>;
   opponentVisual: React.MutableRefObject<FighterVisualState>;
   hud: React.MutableRefObject<DuelHudState>;
-  /** Live weapon stats — read by handlers each attack. Mutate via `updateWeapon`. */
+  /** Player's live weapon stats — read on each player attack. Tuning sliders
+   * patch this ref; the AI uses `opponentWeapon` instead. */
   weapon: React.MutableRefObject<WeaponStats>;
-  /** Patch weapon stats (e.g. tuning sliders). */
+  /** Opponent (AI) weapon stats — read on each opponent attack and when
+   * computing the AI's guard segment. Independent from `weapon` so the bot's
+   * stats are tied to its own preset (default `"basic"`). */
+  opponentWeapon: React.MutableRefObject<WeaponStats>;
+  /** Patch player weapon stats (e.g. tuning sliders). */
   updateWeapon: (patch: Partial<WeaponStats>) => void;
   /** Drive physics + match state. Call from inside `useFrame`. */
   tick: (dtSeconds: number, now: number) => void;
@@ -248,6 +258,9 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     ...getWeaponPreset(opts.weaponId),
     ...(opts.initialWeapon ?? {}),
   });
+  const opponentWeaponRef = useRef<WeaponStats>({
+    ...getWeaponPreset(opts.opponentWeaponId ?? "basic"),
+  });
   const pendingPlayerAttack = useRef<PendingAttack | null>(null);
   const pendingOpponentAttack = useRef<PendingAttack | null>(null);
 
@@ -296,13 +309,13 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const commitPending = (
     selfRef: React.MutableRefObject<FighterState>,
     pendingRef: React.MutableRefObject<PendingAttack | null>,
+    weapon: WeaponStats,
     event: AttackEvent,
     kind: AttackKind,
     sliceDragStart: Vec2,
     now: number,
   ): PendingAttack | null => {
     const self = selfRef.current;
-    const weapon = weaponRef.current;
     if (now < self.attackCooldownUntil) return null;
     if (now < self.stunUntil) return null;
     if (pendingRef.current) return null;
@@ -367,6 +380,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const maybeEngagePreKoBuildup = (
     attackerPosX: number,
     defenderPosX: number,
+    weapon: WeaponStats,
     pending: PendingAttack | null,
     now: number,
   ): void => {
@@ -375,7 +389,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
       !predictKoPotential(
         attackerPosX,
         defenderPosX,
-        weaponRef.current,
+        weapon,
         opts.arenaRadius,
       )
     )
@@ -390,10 +404,12 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const handlePlayerAttack = useCallback((atk: MouseAttack) => {
     if (!isFighting()) return;
     const now = performance.now();
-    const event = mouseToAttackEvent(atk, weaponRef.current);
+    const weapon = weaponRef.current;
+    const event = mouseToAttackEvent(atk, weapon);
     const pending = commitPending(
       playerStateRef,
       pendingPlayerAttack,
+      weapon,
       event,
       atk.kind,
       atk.start,
@@ -402,6 +418,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     maybeEngagePreKoBuildup(
       playerStateRef.current.posX,
       opponentStateRef.current.posX,
+      weapon,
       pending,
       now,
     );
@@ -410,9 +427,11 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
   const handleOpponentAttack = useCallback((event: AttackEvent) => {
     if (!isFighting()) return;
     const now = performance.now();
+    const weapon = opponentWeaponRef.current;
     const pending = commitPending(
       opponentStateRef,
       pendingOpponentAttack,
+      weapon,
       event,
       event.kind,
       event.origin,
@@ -421,6 +440,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     maybeEngagePreKoBuildup(
       opponentStateRef.current.posX,
       playerStateRef.current.posX,
+      weapon,
       pending,
       now,
     );
@@ -440,7 +460,9 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     const pending = pendingRef.current;
     if (!pending || pending.resolved || now < pending.impactAt) return;
 
-    const weapon = weaponRef.current;
+    // Attacker's weapon governs knockback / cooldown / counter — mirrors
+    // server `weaponForSide` in `duel-session.handleAttack`.
+    const weapon = attackerIsPlayer ? weaponRef.current : opponentWeaponRef.current;
     const outcome = resolveAttack(
       attackerRef.current,
       defenderRef.current,
@@ -494,6 +516,8 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     };
   }, []);
 
+  // Opponent's guard segment is built by `tickAi` from `opponentWeaponRef`'s
+  // bladeLength (caller passes the snapshot in). We just gate active here.
   const setOpponentGuard = useCallback((guard: GuardSnapshot) => {
     const now = performance.now();
     const stunned = isStunnedRaw(opponentStateRef.current);
@@ -717,6 +741,7 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     opponentVisual,
     hud,
     weapon: weaponRef,
+    opponentWeapon: opponentWeaponRef,
     updateWeapon,
     tick,
     handlePlayerAttack,

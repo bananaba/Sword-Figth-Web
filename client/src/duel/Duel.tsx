@@ -145,11 +145,15 @@ function GameStage({
 
     if (aiEnabled) {
       const fighters = duel.readFighters();
+      // AI runs on the BOT's own weapon, not the player's. Using
+      // `duel.weapon.current` here would let a player's rapier bleed into the
+      // bot's slice/thrust stats — solo-mode parity with ranked requires the
+      // opponent's weapon to drive its own attacks.
       const aiResult = tickAi(
         aiRef.current,
         fighters.opponent,
         fighters.player,
-        duel.weapon.current,
+        duel.opponentWeapon.current,
         now,
         DEFAULT_AI,
       );
@@ -297,6 +301,9 @@ function DuelGame({
     initialOpponentZ: OPPONENT_Z,
     arenaRadius: ARENA_RADIUS,
     weaponId: identity.weaponId,
+    // Bot defaults to "basic" so its stats match the rendered blade preset.
+    // (`<Fighter weaponId="basic">` below.) Mirrors ranked's per-side authority.
+    opponentWeaponId: "basic",
   });
   const caRef = useRef<ChromaticAberrationEffect | null>(null);
   const vigRef = useRef<VignetteEffect | null>(null);

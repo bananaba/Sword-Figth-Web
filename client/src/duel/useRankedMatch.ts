@@ -200,6 +200,11 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
   const opponentFighter = useRef<FighterState>(freshFighter(opts.initialOpponentZ));
 
   const weaponRef = useRef<WeaponStats>({ ...getWeaponPreset(opts.identity.weaponId) });
+  // Mirrors solo's `opponentWeapon` ref so callers reading `duel.opponentWeapon`
+  // (e.g. the AI tick path) get a sane preset even though ranked never runs
+  // local AI. Server is authoritative for outcomes; this is purely a contract
+  // shim. Updated from `room_state` once the opponent's pick is known.
+  const opponentWeaponRef = useRef<WeaponStats>({ ...getWeaponPreset("basic") });
 
   // Latest fighter snapshots from server `state` (target for interpolation).
   const targetPlayer = useRef<FighterNetState | null>(null);
@@ -287,12 +292,14 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
             (p) => p.side !== ourSide.current,
           );
           if (opponentEntry) {
+            const opponentWeaponId = (opponentEntry.weaponId ?? "basic") as WeaponId;
+            opponentWeaponRef.current = { ...getWeaponPreset(opponentWeaponId) };
             updateSummary({
               opponent: {
                 name: opponentEntry.name,
                 rating: opponentEntry.rating,
                 saberColor: opponentEntry.saberColor,
-                weaponId: (opponentEntry.weaponId ?? "basic") as WeaponId,
+                weaponId: opponentWeaponId,
               },
             });
           }
@@ -649,10 +656,22 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       let start: Vec2;
       let end: Vec2;
       if (atk.kind === "slice") {
-        start = atk.start;
-        end = {
+        // Mirror solo `useDuelLoop.commitPending` — exaggerate the swing arc
+        // outward from chest by 1.6× so the visual reads the same in both
+        // modes. Resolver still uses the raw `event` for hit detection so
+        // this is purely a feel-good visual amplification.
+        const SWING_VISUAL_SCALE = 1.6;
+        const dragEnd = {
           x: event.origin.x + event.direction.x * event.reach,
           y: event.origin.y + event.direction.y * event.reach,
+        };
+        start = {
+          x: chest.x + (atk.start.x - chest.x) * SWING_VISUAL_SCALE,
+          y: chest.y + (atk.start.y - chest.y) * SWING_VISUAL_SCALE,
+        };
+        end = {
+          x: chest.x + (dragEnd.x - chest.x) * SWING_VISUAL_SCALE,
+          y: chest.y + (dragEnd.y - chest.y) * SWING_VISUAL_SCALE,
         };
       } else {
         const fullReach = weapon.bladeLength + event.reach;
@@ -928,6 +947,7 @@ export function useRankedMatch(opts: UseRankedMatchOptions): UseRankedMatchResul
       opponentVisual,
       hud,
       weapon: weaponRef,
+      opponentWeapon: opponentWeaponRef,
       updateWeapon,
       tick,
       handlePlayerAttack,
