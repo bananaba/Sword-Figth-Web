@@ -19,7 +19,7 @@ export const PLASMA_BLADE: WeaponStats = {
   thrustKnockback: 8.0,
   counterKnockback: 5.5,
   attackCooldownMs: 600,
-  guardAngleTolerance: (30 * Math.PI) / 180,
+  guardAngleTolerance: (45 * Math.PI) / 180,
   thrustReach: 1.4,
   thrustChargeMs: 280,
   stunMs: 1500,

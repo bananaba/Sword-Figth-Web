@@ -105,15 +105,17 @@
 |---|---|---|
 | 30 | ✅ `THREE.Points` + 커스텀 ShaderMaterial (`pos = origin + v·t + ½·g·t²`) — `useImpacts` 구독 ring-buffer 풀 (`SparkParticles.tsx`) | BLOCK 시안 10 / HIT 마젠타 9 / PIERCE 오렌지(60%)+회색(40%) 15 / KO 흰(50%)+마젠타(50%) 30. AdditiveBlending + Bloom-passing 색상 boost |
 
-### Phase 12 — 캐릭터 메시 통합 (~3–5h, **Quaternius/Mixamo 도착 후**)
+### Phase 12 — 캐릭터 메시 통합
 
-| # | 작업 |
-|---|---|
-| 31 | `gltf-transform` (Draco + Meshopt + WebP)로 base GLB ~120KB까지 압축 |
-| 32 | (필요 시) Blender에서 6 Mixamo anim을 base에 bind → multi-clip GLB 단일 export. retarget 실패 시 `SkeletonUtils` 런타임 합성 시도 |
-| 33 | `useGLTF` + `useAnimations` 훅으로 placeholder 박스 → 후드 몽크 메시 교체. AttackKind/Phase별 anim state machine (idle / windup / slice / thrust / block / hit / death) |
-| 34 | 사이드별 머티리얼 인스턴스 분리 + Fresnel rim 셰이더 적용 (Phase 9.5의 placeholder rim 그대로 이식) |
-| 35 | drei `<Trail>`을 캐릭터 손 본 (Mixamo `mixamorig:RightHand`)에 부착하도록 변경 |
+**2026-04-30 결정**: 사용자 피드백 "동글동글 귀여운 레퍼런스 스타일" → Quaternius "Superhero" 시리즈는 사실적 톤이 Phase 8 저폴리·neon 글로우와 충돌, Mixamo retarget 디버깅 리스크 1일 마감에서 부담. **자산 미사용·procedural Mii 풍으로 전환**. 자산은 `client/public/models/`에 보존(잼 후 폴리시·`?demo=character` 후보).
+
+| # | 작업 | 상태 |
+|---|---|---|
+| 31 | `gltf-transform` 압축 — 자산 미사용으로 N/A | ⬜ skip |
+| 32 | Blender Mixamo retarget — 자산 미사용으로 N/A | ⬜ skip |
+| 33 | placeholder 박스+sphere → **큐트 Mii 풍 prim 합성** (머리/머리카락/눈/egg-torso/어깨/팔×2/손/다리×2/발×2). 양팔은 매 프레임 `currentSwordPose.fromBladePlane`을 follow하는 IK — slice/thrust/guard/idle 모두 sword pose가 결정, 별도 anim 불필요. resolver 상수(`SHOULDER_Y`/`BODY_HEIGHT` 등) 그대로 — 게임 로직 0 영향 | ✅ |
+| 34 | Fresnel rim을 **가드 텔로 재해석** — body 5개 머티리얼은 중립(rim 미적용), `swordMaterial`에만 적용 후 `s.guard.active ? accent : black`로 lerp. Three r155+ chunk 리네임(`output_fragment` → `opaque_fragment`) 매칭 버그 동시 수정 — Phase 9.5(c) body rim은 처음부터 silently no-op이었음 | ✅ |
+| 35 | Trail을 손 본에 부착 — 현재 검 끝 그대로(prim 합성에 본 없음). 폴리시 단계에서 `handsRef` 위치를 trail anchor로 옮기면 동등 효과 | ⬜ P2 |
 
 ### Phase 13 — 배포 (Day 2 끝, ~2h)
 

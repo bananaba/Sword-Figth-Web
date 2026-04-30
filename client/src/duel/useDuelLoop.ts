@@ -309,10 +309,22 @@ export function useDuelLoop(opts: UseDuelLoopOptions): UseDuelLoop {
     let start: Vec2;
     let end: Vec2;
     if (kind === "slice") {
-      start = sliceDragStart;
-      end = {
+      // Visual swing amplification: amplify the start/end positions outward
+      // from chest so the blade tip arcs much wider than the raw mouse drag.
+      // The resolver still uses the original `event` (origin/direction/reach)
+      // for hit detection, so this is purely a feel-good visual exaggeration.
+      const SWING_VISUAL_SCALE = 1.6;
+      const dragEnd = {
         x: event.origin.x + event.direction.x * event.reach,
         y: event.origin.y + event.direction.y * event.reach,
+      };
+      start = {
+        x: chest.x + (sliceDragStart.x - chest.x) * SWING_VISUAL_SCALE,
+        y: chest.y + (sliceDragStart.y - chest.y) * SWING_VISUAL_SCALE,
+      };
+      end = {
+        x: chest.x + (dragEnd.x - chest.x) * SWING_VISUAL_SCALE,
+        y: chest.y + (dragEnd.y - chest.y) * SWING_VISUAL_SCALE,
       };
     } else {
       const dx = event.direction.x;
