@@ -7,7 +7,7 @@
 - `types.ts` — `Vec2`, `FighterState`, `GuardSnapshot`, `AttackEvent`, `Outcome`, `WeaponStats`, `WeaponId`
 - `geometry.ts` — 선분/박스 교차, 두 선의 예각. 순수 수학.
 - `weapons.ts` — 3 프리셋 (`BASIC_SWORD` 균형 / `CHARGE_SWORD` counter specialist / `RAPIER` thrust specialist) + `WEAPON_PRESETS: Record<WeaponId, WeaponStats>` + `getWeaponPreset(id)` (BASIC fallback). `PLASMA_BLADE`는 `BASIC_SWORD` 별칭으로 worker 후방 호환 유지. IP-안전 네이밍 근거 → `claudedocs/research_character_weapon_customization_20260429.md` §7.3
-- `arena.ts` — `ARENA_RADIUS=4.0` / `INITIAL_PLAYER_POS=-1.0` / `INITIAL_OPPONENT_POS=1.0` 단일 진실 소스. **클라 시각 림, 솔로 ringout, 서버 ringout이 모두 동일 값을 import**해야 함 (Phase 16, ca027c8 — 이전 4.0/4.2 차이로 시각 림 밖에서 살아있는 케이스 있었음).
+- `arena.ts` — `ARENA_RADIUS=4.0` / `INITIAL_PLAYER_POS=-1.5` / `INITIAL_OPPONENT_POS=1.5` 단일 진실 소스. **클라 시각 림, 솔로 ringout, 서버 ringout이 모두 동일 값을 import**해야 함 (Phase 16 ca027c8 — 이전 4.0/4.2 차이로 시각 림 밖에서 살아있는 케이스 있었음. Phase 18 91a1bd9 — 시작 거리 ±1.0 → ±1.5으로 확장, 카메라가 너무 가까워 보이던 문제 해결).
 - `blade-tip-predictor.ts` — 30Hz 서버 스냅샷 사이 옵저버 측 blade tip 보간/짧은 lead 예측. `createBladeTipPredictor(initialTip, opts)` → `updateBladeTipPrediction(predictor, {kind: "snapshot"|"frame", ...})`. 순수 함수 (return 새 객체). 디폴트 lead 0.08s / 0.42unit 클램프, snapshotCorrection 0.85, exponential catch-up rate 26. `shared/test/blade-tip-predictor.test.js` 회귀 가드.
 - `resolver.ts` — `resolveAttack` / `applyOutcome` / `tickFighter`
 - `index.ts` — 배럴 익스포트 (`@vibejam/shared`)
@@ -36,12 +36,12 @@
   - `block` → `attackerStun > 0`이면 공격자 stun, `defenderCounterWindow > 0`이면 디펜더 카운터
   - 넉백: `attackerFollowFraction = 1.0` → 거리 보존 (양쪽 같은 속도로 이동)
 
-## 주요 튜닝 노브 (Phase 16 다중 프리셋)
+## 주요 튜닝 노브 (Phase 16 다중 프리셋, Phase 18 0.75× 재튠)
 
-- 넉백 (slice/counter/thrust):
-  - BASIC: 4.0 / 5.0 / 6.0 (균형)
-  - CHARGE: 3.0 / **7.5** / 5.0 (counter specialist)
-  - RAPIER: 3.0 / 4.0 / **9.0** (thrust specialist)
+- 넉백 (slice/counter/thrust) — Phase 18에서 모든 프리셋 0.75×:
+  - BASIC: 3.0 / 3.75 / 4.5 (균형)
+  - CHARGE: 2.25 / **5.625** / 3.75 (counter specialist)
+  - RAPIER: 2.25 / 3.0 / **6.75** (thrust specialist)
 - 타이밍 — Phase 16에서 attack kind별 분리: `sliceImpactMs` / `thrustImpactMs` / `sliceCooldownMs` / `thrustCooldownMs` 4 필드 모두 명시 declare (단일 `windUpMs`/`attackCooldownMs` 폐기).
   - BASIC: 280 / 180 / 600 / 400
   - CHARGE: 320 / 240 / 600 / 400 (heavier swing)
@@ -49,7 +49,7 @@
 - 가드 허용폭: `guardAngleTolerance = 45°` (Phase 16에서 30° → 45° 완화)
 - `stunMs = 1500` (모든 프리셋, 단일 변수 — 공격자 stun = 카운터 윈도우 = thrust block stun)
 - 마찰: `FRICTION = 5.0` (`useDuelLoop.ts`에 있음, weapons.ts 아님)
-- 아레나: `ARENA_RADIUS = 4.0` (`arena.ts`)
+- 아레나: `ARENA_RADIUS = 4.0`, `INITIAL_*_POS = ±1.5` (`arena.ts`)
 
 ## 변경 시
 

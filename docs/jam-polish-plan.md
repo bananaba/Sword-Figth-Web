@@ -1,14 +1,16 @@
 # Chambara Duel — 잼 출시 폴리시 계획
 
 > **작성**: 2026-04-29 (Phase 8 = Day 1 시각 P0 완료 직후)
-> **잼 마감**: 2026-05-01 13:37 UTC (~48h 잔여)
-> **위치**: Day 1 P0 → 본 문서(Phase 9.5/10) → Day 2 랭크 서버(Phase 11) → 배포(Phase 13)
+> **마지막 갱신**: 2026-05-01 잼 마감 당일 (Phase 18 = D-day 최종 튠 반영)
+> **잼 마감**: 2026-05-01 13:37 UTC
+> **위치**: Day 1 P0 → 본 문서(Phase 9.5/10) → Day 2 랭크 서버(Phase 11) → 배포(Phase 13) → Audio(Phase 17) → D-day 최종 튠(Phase 18, 잼 마감 당일)
 > **선행 리서치**:
 > - `claudedocs/research_impact_feedback_20260429.md` — 시각·청각·햅틱·시간·공간 5축
 > - `claudedocs/research_character_weapon_customization_20260429.md` — 캐릭터·무기·커스터마이징
 > - `claudedocs/research_chambara_visuals_20260429.md` — Bloom·트레일·물 (Phase 8에서 적용 완료)
+> - `claudedocs/research_audio_sfx_bgm_20260430.md` — 오디오 SFX/BGM (Phase 17에서 적용 완료)
 >
-> **현 빌드 상태**: `docs/duel-implementation.md` §8 (Phase 8까지 반영)
+> **현 빌드 상태**: `docs/duel-implementation.md` (Phase 18까지 반영, §3.6 + §9 history)
 
 ---
 
@@ -116,6 +118,7 @@
 | 33 | placeholder 박스+sphere → **큐트 Mii 풍 prim 합성** (머리/머리카락/눈/egg-torso/어깨/팔×2/손/다리×2/발×2). 양팔은 매 프레임 `currentSwordPose.fromBladePlane`을 follow하는 IK — slice/thrust/guard/idle 모두 sword pose가 결정, 별도 anim 불필요. resolver 상수(`SHOULDER_Y`/`BODY_HEIGHT` 등) 그대로 — 게임 로직 0 영향 | ✅ |
 | 34 | Fresnel rim을 **가드 텔로 재해석** — body 5개 머티리얼은 중립(rim 미적용), `swordMaterial`에만 적용 후 `s.guard.active ? accent : black`로 lerp. Three r155+ chunk 리네임(`output_fragment` → `opaque_fragment`) 매칭 버그 동시 수정 — Phase 9.5(c) body rim은 처음부터 silently no-op이었음 | ✅ |
 | 35 | Trail을 손 본에 부착 — 현재 검 끝 그대로(prim 합성에 본 없음). 폴리시 단계에서 `handsRef` 위치를 trail anchor로 옮기면 동등 효과 | ⬜ P2 |
+| 35a | **Phase 14**에서 xbot/ybot Mixamo 리깅으로 전환(prim 합성 폐기), **Phase 18 e959f05**에서 슬래시 8방향 클립(45°·225° oneHand/twoHands variant) + 전용 Stun reaction 클립으로 attack 모션 다양화 완료. **Phase 18 6c01bcc** hips root motion 25% 댐핑으로 클립 슬라이딩 fix | ✅ |
 
 ### Phase 13 — 배포 (Day 2 끝, ~2h)
 
@@ -123,9 +126,10 @@
 |---|---|---|
 | 36 | Cloudflare Pages 클라 배포 — `chambara-duel.pages.dev`, `VITE_WORKER_URL` build-time embed | ✅ |
 | 37 | Cloudflare Worker + DO 배포 — `chambara-ranked-worker.200tiger1.workers.dev`, RANKED_QUEUE/DUEL_ROOM/LEADERBOARD v1+v2 마이그레이션 | ✅ |
-| 38 | 잼 컴플라이언스 체크리스트 (`docs/vibe-jam.md` §8): AI 코드 비율 ≥90%, 즉시 로딩, 즉시 멀티플레이 | ⬜ |
+| 38 | 잼 컴플라이언스 체크리스트 (`docs/vibe-jam.md` §8): AI 코드 비율 ≥90%, 즉시 로딩, 즉시 멀티플레이 | ⬜ (잼 마감일 검증) |
 | 39 | iOS Safari 자이로/터치 sanity check (P2지만 30초 컷에서 reject 회피) | ⬜ |
 | 39b | 두 창 라이브 매칭 smoke test — Solo/Ranked → queue → match → state → impact → matchOver → leaderboard | ⬜ (사용자 브라우저) |
+| 39c | **Phase 18 잼 D-day 최종 튠** (2026-05-01): 8방향 슬래시 + Stun reaction, hips root motion 25% 댐핑, 봇 가드 연속 스무딩, 옵저버 가드/blade tip facing flip 보정, spawn 거리 ±1.5 확장, 넉백 전 프리셋 0.75× 재튠, 솔로 replay BGM 트리거, 페이지 title. 자세한 내용: `duel-implementation.md` §3.6 + §9 Phase 18 | ✅ |
 
 ---
 
@@ -220,8 +224,10 @@
 | 11.5 Sparks 파티클 | ✅ 완료 (2026-04-29, §9 Phase 11.5) | 10a |
 | **11.6 Audit pass + 신뢰성 패치** | **✅ 완료 (2026-04-29, §9 Phase 11.6, 12 patches, 46/46 tests)** | **11a–c, 11.5** |
 | 11e Private rooms | ✅ 완료 (2026-04-29, 49/49 worker tests) | 11b |
-| 12 캐릭터 메시 통합 | ⬜ | **Quaternius + Mixamo 도착**, 9.5(rim 셰이더 패턴) |
+| 12 캐릭터 메시 통합 | ✅ Mii prim → Phase 14 xbot/ybot Mixamo 전환 → Phase 18 8방향 슬래시 + Stun + root motion 댐핑으로 마감 | 9.5 / 14 / 17 / 18 |
 | **13 배포** | **✅ 완료 (2026-04-29, Workers `chambara-ranked-worker.200tiger1.workers.dev` + Pages `chambara-duel.pages.dev`)** | 11.6 |
+| **17 Audio 통합** | **✅ 완료 (2026-05-01, db003db, §9 Phase 17)** — 21 SFX + 4 BGM + 2 ambient + reactive saber hum + Credits 모달 | 사용자 자료 + Web Audio |
+| **18 잼 D-day 최종 튠** | **✅ 완료 (2026-05-01, §3.6 / §9 Phase 18)** — 8방향 슬래시·Stun·root motion 25%·봇 스무딩·옵저버 미러링·spawn ±1.5·넉백 0.75×·BGM replay·page title | 17 |
 
 각 Phase 완료 시:
 1. `yarn workspace @vibejam/shared build && yarn workspace @vibejam/client typecheck` 통과
@@ -243,7 +249,7 @@
 
 ## 5. 참조
 
-- `docs/duel-implementation.md` — 현재 빌드 상태 단일 진실 소스 (Phase 8까지)
+- `docs/duel-implementation.md` — 현재 빌드 상태 단일 진실 소스 (Phase 18까지)
 - `docs/game-design.md` §6.1 — 잼 일정 / Day 1 / Day 2 / P2 폴리시 우선순위
 - `docs/ranked-multiplayer-cloudflare.md` — 무료 범위 랭크 1v1 서버/배포 전략
 - `claudedocs/research_impact_feedback_20260429.md` §2.1 — OUTCOME별 정량 시퀀스 표 (hit-stop ms, 셰이크 trauma, CA px, 햅틱 패턴)

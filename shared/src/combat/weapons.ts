@@ -19,11 +19,11 @@ export const BASIC_SWORD: WeaponStats = {
   id: "basic",
   sliceKnockback: 3.0,
   thrustKnockback: 4.5,
-  counterKnockback: 3.75,
-  sliceImpactMs: 280,
-  thrustImpactMs: 180,
-  sliceCooldownMs: 600,
-  thrustCooldownMs: 400,
+  counterKnockback: 3.5,
+  sliceImpactMs: 400,
+  thrustImpactMs: 300,
+  sliceCooldownMs: 1000,
+  thrustCooldownMs: 800,
   guardAngleTolerance: (45 * Math.PI) / 180,
   thrustReach: 1.4,
   stunMs: 1500,
@@ -44,15 +44,11 @@ export const BASIC_SWORD: WeaponStats = {
 export const CHARGE_SWORD: WeaponStats = {
   ...BASIC_SWORD,
   id: "charge",
-  sliceKnockback: 2.25,
-  thrustKnockback: 3.75,
-  counterKnockback: 5.625,
+  sliceKnockback: 2.5,
+  thrustKnockback: 3.5,
+  counterKnockback: 6.0,
   // Slightly heavier swing — committed strikes feel weightier and the
   // longer cooldown discourages spam (you want each counter to count).
-  sliceImpactMs: 320,
-  thrustImpactMs: 240,
-  sliceCooldownMs: 600,
-  thrustCooldownMs: 400,
 };
 
 /**
@@ -65,14 +61,14 @@ export const CHARGE_SWORD: WeaponStats = {
 export const RAPIER: WeaponStats = {
   ...BASIC_SWORD,
   id: "rapier",
-  sliceKnockback: 2.25,
-  thrustKnockback: 6.75,
+  sliceKnockback: 2.5,
+  thrustKnockback: 7.0,
   counterKnockback: 3.0,
   thrustReach: 1.7,
-  sliceImpactMs: 300,
-  thrustImpactMs: 120,
-  sliceCooldownMs: 600,
-  thrustCooldownMs: 400,
+  sliceImpactMs: 400,
+  thrustImpactMs: 200,
+  sliceCooldownMs: 1000,
+  thrustCooldownMs: 600,
   bladeLength: 1.4,
 };
 

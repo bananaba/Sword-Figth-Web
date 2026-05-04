@@ -1,9 +1,10 @@
 # Game Design — Chambara Duel
 
-> 마지막 업데이트: 2026-04-28
+> 마지막 업데이트: 2026-05-01 잼 마감 당일
 >
 > Vibe Jam 2026 출품작 컨셉 + 입력 모델 + 판정 규칙 + 프로토타입 정리.
 > 이 문서는 살아있는 디자인 로그 — 결정이 바뀌면 갱신.
+> **현재 빌드 상태는 `docs/duel-implementation.md`(Phase 18까지 반영)** 참고.
 
 ## 1. 컨셉 한 줄
 
@@ -139,12 +140,12 @@ line_angle = min(diff_rad, π − diff_rad)            // [0, π/2]
 ## 6. 미결정 (다음 단계)
 
 ### 게임 디자인
-- [x] **테마 / 톤**: **SF 라이트세이버** (2026-04-29 결정). 검 글로우는 시안 코어 + 화이트 HDR, Bloom selective로 발광. 의상 디테일 부담 최소화 + 잼 30초 룰에 즉시 어필.
-- [ ] **캐릭터 소스**: Soldier 재활용 / Quaternius 로우폴리 / **Tripo3D** 사전 풀
-- [ ] **스테이지**: 평지 / 좁은 발판 + 물 (원작) / 회전판 / 컨베이어
-- [ ] **승패 조건**: HP 시스템 / 발판 밖 낙하 / 베스트 오브 N / 시간 제한
-- [ ] **공격 시스템**: 가드 매칭만 / 차지 어택(가드 무력화) / 페이크 추가
-- [ ] **공격 각도 풀**: 현재 7종, 적정성 검증 필요
+- [x] **테마 / 톤**: **SF 라이트세이버 + 사이파이 인더스트리얼 챔버** (2026-04-29 결정 → Phase 16에서 콜로세움 → 사이파이 챔버 + 사이버펑크 스카이라인으로 재테마). 검 글로우는 시안/마젠타 코어 + 화이트 HDR, Bloom selective로 발광.
+- [x] **캐릭터 소스**: xbot/ybot Mixamo 리깅(Phase 14) — Mii prim placeholder 폐기. Phase 18에서 슬래시 8방향 클립 + 전용 Stun reaction.
+- [x] **스테이지**: 좁은 발판 + 가시 함정 pit (Phase 16, Water 폐기). `ARENA_RADIUS=4.0`, 사이파이 인더스트리얼 챔버 톤.
+- [x] **승패 조건**: 발판 밖 낙하(ringout) + 시간 제한 45s + Bo3 라운드 (Phase 8/16).
+- [x] **공격 시스템**: 가드 매칭(직각 ±45°) + 카운터 윈도우 + thrust block stun (Phase 7). 페이크는 미구현(P2).
+- [x] **공격 각도 풀**: Phase 18부터 슬래시 8방향 클립 + 시작점 방향 매핑(45°/225°는 무기별 oneHand/twoHands variant).
 - [x] **카메라 앵글**: 캐릭터 바로 뒤 (X=0 중앙) + 살짝 위에서 내려다보는 3rd-person — Switch Sports 챔버라 예시 이미지 매칭. 시야 확보는 player `transparentWhenIdle` (32% opacity)으로 해결.
 
 ### 튜닝 (`?demo=arena` 슬라이더로 결정)
@@ -153,38 +154,47 @@ line_angle = min(diff_rad, π − diff_rad)            // [0, π/2]
 - [ ] **Idle**: 현재 1500ms
 
 ### 멀티플레이
-- [x] AI 봇 (단독 플레이) — 메인 모드로 구현
-- [ ] **랭크 1v1 자동 매치메이킹 (Day 2 P0)**: Cloudflare Workers + Durable Objects. `RankedQueue` DO가 점수 ±200 범위에서 매칭, `DuelRoom` DO가 shared resolver로 서버 권위 판정. 승패 후 ELO(K=32) 갱신 + Top 20 leaderboard.
-- [ ] **사설방 코드 생성/입장 (P1)**: 랭크 이후 같은 `DuelRoom` DO를 room code 기반으로 재사용.
-- [ ] **자동 토너먼트 4/8/16인 (P2)**: 랭크 1v1 완성 후 확장. 승자 자동 next round, 패자 관전/종료.
-- [ ] 임팩트 시점 동기화 (네트워크 지연 보상) — 최근 200-300ms guard/state history로 보정.
+- [x] AI 봇 (단독 플레이) — 메인 모드. Phase 18부터 봇 가드가 PI/4 snap 폐기 + 연속 각도 + critical-damped 스무딩으로 자연화.
+- [x] **랭크 1v1 자동 매치메이킹**: Cloudflare Workers + Durable Objects. `RankedQueue` DO ±200 범위 매칭, `DuelRoom` DO shared resolver 서버 권위. ELO K=32 + `Leaderboard` DO Top 20 (Phase 11a/11c).
+- [x] **사설방 코드 생성/입장**: `/rooms/private-{code}` 직접 WS 연결, `record=0`으로 leaderboard/local rating에 반영 X (Phase 11e).
+- [ ] **자동 토너먼트 4/8/16인 (P2)**: UI는 비활성. 승자 집계/브래킷 진행 DO 미구현.
+- [x] 옵저버 측 검 끝/가드 보간 (Phase 16 `blade-tip-predictor` + Phase 18 facing-flip 미러링).
 
 ### 컴플라이언스 / 마무리
 - [x] vibej.am 위젯 동작 확인 (현재 index.html 에 삽입)
-- [ ] **자체 도메인 호스팅** (잼 규칙) — Cloudflare Pages 또는 Vercel(client) + Cloudflare Workers/Durable Objects(server). Render/Railway/Colyseus는 fallback.
-- [ ] 모바일 빌드 사이즈 점검 (현재 1.25MB / gzip 353KB)
-- [ ] 모바일 동작 검증 (iOS Safari 자이로/터치)
-- [ ] AI 코드 비율 ≥ 90% 유지
+- [x] **자체 도메인 호스팅**: Cloudflare Pages(client) + Cloudflare Workers/Durable Objects(worker). Phase 13 라이브 배포 완료.
+- [x] **즉시 로딩**: Pages TTFB 71ms / Total 81ms, JS 번들 gzip 388KB (2026-04-29 측정).
+- [ ] 모바일 동작 검증 (iOS Safari 자이로/터치) — P2
+- [ ] AI 코드 비율 ≥ 90% 유지 — 잼 마감 직전 검증
+- [ ] 두 창 라이브 매칭 smoke test (Solo/Ranked → queue → match → state → impact → matchOver → leaderboard)
 
 ## 6.1 잼 일정 (마감 2026-05-01 13:37 UTC)
 
-**플랫폼**: PC 우선 (마우스+키보드). 모바일은 시간 남으면 P2.
+**플랫폼**: PC 우선 (마우스 전용). 모바일은 시간 남으면 P2.
 
-**Day 1 (시각 P0)** — 잼 30초 룰 충족용 시그니처:
-1. ~~카메라 앵글~~ ✅ 완료 (Phase 7)
-2. postprocessing + Bloom 도입
-3. 검 emissive HDR (라이트세이버 톤)
+**Day 1 (시각 P0)** — Phase 7-8 (2026-04-29) ✅ 완료:
+1. 카메라 앵글 (Phase 7)
+2. postprocessing + Bloom + ACES 톤매핑
+3. 검 emissive HDR (라이트세이버 톤, 시안/마젠타 코어)
 4. 검 트레일 (drei `<Trail>`)
-5. 임팩트 링/셰이크 (BLOCK/HIT 시각화)
-6. KO splash + 콜로세움 외곽 링 분리
-7. Stylized water shader
+5. 임팩트 링/셰이크 (BLOCK/HIT/PIERCE 시각화) + KO splash
+6. 4-tier 외곽 링 + 발광 페리미터
+7. Stylized water shader (이후 Phase 16에서 가시 함정으로 교체)
 
-**Day 2 (멀티 + 배포)**:
-1. Cloudflare `RankedQueue` Durable Object — ELO 기반 1대1 자동 매치메이킹
-2. Cloudflare `DuelRoom` Durable Object — shared resolver 기반 서버 권위 공격/방어 판정
-3. ELO 저장 + leaderboard + Cloudflare Pages 또는 Vercel 배포 + 컴플라이언스 검증
+**Day 2 (멀티 + 배포)** — Phase 11/13 (2026-04-29) ✅ 완료:
+1. Cloudflare `RankedQueue` Durable Object — ELO ±200 자동 매치메이킹 (Phase 11a + 11.6)
+2. Cloudflare `DuelRoom` Durable Object — shared resolver 서버 권위, 30Hz state broadcast (Phase 11a)
+3. ELO K=32 + `Leaderboard` DO + Cloudflare Pages 배포 + GitHub Actions CI/CD (Phase 11c/13)
 
-**P2 폴리시 (시간 남으면)**: 사설방/토너먼트, MeshToonMaterial, 카메라 임팩트 셰이크/줌, 다리 메시 + walk 애니메이션, HUD 폰트, 사운드.
+**Day 2 추가 폴리시** — Phase 15-18 (2026-04-30 ~ 2026-05-01) ✅ 완료:
+1. 애니메이션 시스템 확장 (Phase 15: clip timeScale + hit 분리 + 가드 lean)
+2. 다중 무기·캐릭터 + 사이파이 챔버 + 옵저버 보간 (Phase 16, 15+ commits)
+3. 오디오 통합 — Howler 21 SFX + 4 BGM + reactive saber hum (Phase 17)
+4. **D-day 최종 튠** — 8방향 슬래시, root motion 댐핑, 봇 가드 스무딩, 옵저버 미러링, spawn 거리 ±1.5, 넉백 0.75× (Phase 18)
+
+**잔여 잼 마감 작업**: AI 코드 비율 검증, 두 창 라이브 매칭 smoke test, 컴플라이언스 체크리스트 (`docs/vibe-jam.md` §8).
+
+**P2 폴리시 (잼 후)**: 자동 토너먼트, 모바일 자이로/터치, AI 시드 RNG, footstep SFX, 사전-KO 슬로모 활성화 튜닝.
 
 ## 7. 화이트스페이스 결합 가능성
 

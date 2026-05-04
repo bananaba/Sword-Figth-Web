@@ -25,11 +25,13 @@
 3. `docs/ranked-multiplayer-cloudflare.md` — 무료 범위 랭크 1v1 서버/배포 전략
 4. `claudedocs/research_chambara_visuals_20260429.md` §7 — Day 1 시각 P0 작업 순서
 
-## 현재 상태 (2026-04-29)
+## 현재 상태 (2026-05-01 잼 마감 당일 — Phase 18 완료)
 
-- **Phase 8 완료 — Day 1 시각 P0 모두 완료**: Bloom + ACES 톤매핑, 검 라이트세이버 emissive(시안 코어), drei Trail, ImpactRings + 카메라 셰이크, KO splash(ringout 분기), 외곽 림 + 발광 페리미터, `Water.tsx` ShaderMaterial
-- **서버 전략 결정**: 무료 + 랭크 필수 조건 때문에 Colyseus/Render 우선이 아니라 **Cloudflare Workers + Durable Objects**로 새 랭크 1v1 서버 구현
-- **Day 2 작업**: RankedQueue DO → DuelRoom DO → ELO/leaderboard → 배포 + 컴플라이언스. 사설방/토너먼트는 P1/P2
+- **라이브 배포** (Phase 13, 2026-04-29): Worker `chambara-ranked-worker.200tiger1.workers.dev` + Pages `chambara-duel.pages.dev`. CI/CD GitHub Actions, RANKED_QUEUE/DUEL_ROOM/LEADERBOARD DO v1+v2 마이그레이션.
+- **Phase 16** (2026-04-30, 15+ commits): 3 sword presets(BASIC/CHARGE/RAPIER) + character/weapon picker, per-weapon slice/thrust 타이밍 분리, `arena.ts` 단일 진실 소스, `blade-tip-predictor` 옵저버 보간, abandonment forfeit, 사전-KO 슬로모 인프라(비활성), Water → 가시 함정, 콜로세움 → 사이파이 인더스트리얼 챔버 + 사이버펑크 스카이라인 백드롭.
+- **Phase 17** (2026-05-01, db003db): 오디오 통합. Howler 21 SFX + 4 BGM streaming + 2 ambient loop + Web Audio reactive saber hum + Credits 모달. `client/src/duel/audio/` 모듈.
+- **Phase 18** (2026-05-01 잼 D-day 최종 튠, 13 commits): 8방향 슬래시 + 전용 Stun reaction 클립, Mixamo hips root motion 25% 댐핑(클립 슬라이딩 fix), 봇 가드 PI/4 snap → 연속 각도 + critical-damped 스무딩 + 손-tremor wobble + 35% react-mirror, 옵저버 perspective 가드/blade tip facing flip 보정, spawn 거리 ±1.0 → ±1.5(총 3.0 unit), 넉백 전 프리셋 0.75× 재튠(BASIC 3.0/3.75/4.5 등), 솔로 replay BGM 트리거, 페이지 title.
+- **남은 작업**: 잼 컴플라이언스 체크리스트 검증(AI 코드 비율 ≥90%, 즉시 로딩, 즉시 멀티플레이), 두 창 라이브 매칭 smoke test, iOS Safari sanity check.
 
 ## 코드 작성 규칙
 
